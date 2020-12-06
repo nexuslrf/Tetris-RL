@@ -22,3 +22,5 @@ Some existing projects:
     * Observation space? Consider a matrix containing current dropped tetrominoes and current dropping one, plus next tetromnino and held tetromino
 
         matrix shape [3,20,10] or [20,30] or [20,10] + 2 x [4,4]
+
+    Codes I am looking & modifying: https://github.com/cuhkrlcourse/DeepRL-Tutorials
