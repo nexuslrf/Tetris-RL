@@ -284,7 +284,7 @@ class Matris(object):
             if action == 'hard drop':
                 self.hard_drop()
             elif action == 'sonic drop':
-                sonic_drop = True
+                self.request_movement('down')
             elif action == 'forward':
                 self.request_forward_rotation()
             elif action == 'reverse':
@@ -306,26 +306,15 @@ class Matris(object):
             elif action == 'hold':
                 self.swap_held()
 
-        self.downwards_speed = self.base_downwards_speed * (1 - 0.9 * (self.level -1) /(MAX_LEVEL - 1))
-
-        self.downwards_timer += timepassed
-        downwards_speed = self.downwards_speed 
-        if sonic_drop:
-            downwards_speed = self.downwards_speed*0.2
-
-        if self.downwards_timer > downwards_speed:
-            if not self.request_movement('down'): #Places tetromino if it cannot move further down
-                self.drop_trials -= 1
-                if self.drop_trials == 0:
-                    self.lock_tetromino()
-                    self.drop_trials = DROP_TRIALS
+        if not self.request_movement('down'): #Places tetromino if it cannot move further down
+            self.drop_trials -= 1
+            if self.drop_trials == 0:
+                self.lock_tetromino()
+                self.drop_trials = DROP_TRIALS
             # else:
             #     if sonic_drop:
             #         # self.score += 1
             #         pass
-
-            self.downwards_timer %= downwards_speed
-
 
         if any(self.movement_keys.values()):
             self.movement_keys_timer += timepassed
