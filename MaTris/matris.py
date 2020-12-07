@@ -267,6 +267,9 @@ class Matris(object):
             self.request_movement('right' if self.movement_keys['right'] else 'left')
             self.movement_keys_timer %= self.movement_keys_speed
         
+        if self.needs_redraw:
+            self.update_matrix()
+        
         return self.needs_redraw
 
     def step_update(self, actions, timepassed):
@@ -330,14 +333,19 @@ class Matris(object):
             self.request_movement('right' if self.movement_keys['right'] else 'left')
             self.movement_keys_timer %= self.movement_keys_speed
         
+        if self.needs_redraw:
+            self.update_matrix()
+
         return self.score - pre_score
+
+    def update_matrix(self):
+        self.matrix[1:,:,:] = 0
+        self.matrix = self.blend(matrix=self.place_shadow())
 
     def draw_surface(self):
         """
         Draws the image of the current tetromino
         """
-        self.matrix[1:,:,:] = 0
-        self.matrix = self.blend(matrix=self.place_shadow())
         if self.surface:
             grid = self.matrix[0] + self.matrix[1]
             complete_overlap = np.abs(self.matrix[1] - self.matrix[2]).sum() == 0
@@ -585,7 +593,7 @@ class Matris(object):
 
         self.set_tetrominoes()
 
-        if  self.blend() is None:
+        if  self.matrix[0,:2,:].sum()>0 or self.blend() is None:
             self.gameover_sound.play()
             self.done = True
             self.gameover()
