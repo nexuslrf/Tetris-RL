@@ -1,0 +1,46 @@
+from timeit import default_timer as timer
+from datetime import timedelta
+import numpy as np
+import random
+
+from MaTris.gym_matris import MatrisEnv
+from agents.DQN import Model
+from utils.hyperparameters import Config
+from utils.ReplayMemory import ExperienceReplayMemory
+
+if __name__ == "__main__":
+    config = Config()
+    env = MatrisEnv(no_display=False)
+    model = Model(env=env, config=config)
+
+    episode_reward = 0
+    observation = env.reset()
+    for frame_idx in range(1, config.MAX_FRAMES + 1):
+        env.render()
+        epsilon = config.epsilon_by_frame(frame_idx)
+
+        action = model.get_action(observation, epsilon)
+        prev_observation=observation
+        observation, reward, done, _ = env.step(action)
+        observation = None if done else observation
+
+        model.update(prev_observation, action, reward, observation, frame_idx)
+        episode_reward += reward
+
+        print(f"T: {frame_idx} | Reward: {reward}")
+
+        if done:
+            observation = env.reset()
+            model.save_reward(episode_reward)
+            episode_reward = 0
+            
+            # if np.mean(model.rewards[-10:]) > 19:
+            #     # plot(frame_idx, model.rewards, model.losses, model.sigma_parameter_mag, timedelta(seconds=int(timer()-start)))
+            #     break
+
+        # if frame_idx % 10000 == 0:
+        #     plot(frame_idx, model.rewards, model.losses, model.sigma_parameter_mag, timedelta(seconds=int(timer()-start)))
+
+    model.save_w()
+    env.close()
+
