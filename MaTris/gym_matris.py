@@ -31,7 +31,7 @@ class MatrisEnv(gym.Env):
         self.real_tick = real_tick
         self.action_list = ACTIONS
         self.action_space = spaces.Discrete(len(ACTIONS))
-        self.observation_space = spaces.Box(low=0, high=3, shape=(1,20,10), dtype=np.int)
+        self.observation_space = spaces.Box(low=0, high=3, shape=(3,22,10), dtype=np.int)
         # self.observation_space = spaces.Dict({"board": spaces.Box(low=0, high=1, shape=(3,20,10), dtype=np.int), 
         #                                       "current": spaces.Box(low=0, high=7, shape=(1,), dtype=np.int),  
         #                                       "next": spaces.Box(low=0, high=7, shape=(1,), dtype=np.int),
@@ -43,7 +43,20 @@ class MatrisEnv(gym.Env):
         reward = self.game.matris.step_update(self.action_list[action_id], timepassed/1000)
         done = self.game.matris.done
         state = self.game.matris.get_state()
-        info = None
+        info = self.game.matris.get_info()
+        """
+        Try to add penalty...
+        20 rows in total, X = row of the highest locked tetrimino, P = x ** 2
+        Tetrimino coverage: 10 * Area / Covered
+        """
+        line_cnt = state[0].sum(1).reshape(-1)
+        covered_area = line_cnt.sum()
+        highest_row = 22 - np.arange(22)[line_cnt>0].min() if covered_area>0 else 0
+        covered_area = 1 if covered_area==0 else covered_area
+        penalty = highest_row ** 2 + 10 * highest_row / covered_area
+
+        reward -= penalty
+
         return state, reward, done, info
 
     def reset(self):
@@ -60,6 +73,9 @@ class MatrisEnv(gym.Env):
             return
         if self.screen and self.game.matris.needs_redraw:
             self.game.redraw()
+
+    def close(self):
+        self.game.matris.gameover(True)
 
 if __name__ == "__main__":
     env = MatrisEnv(no_display=False)

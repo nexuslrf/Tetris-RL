@@ -339,8 +339,9 @@ class Matris(object):
         return self.score - pre_score
 
     def update_matrix(self):
-        self.matrix[1:,:,:] = 0
-        self.matrix = self.blend(matrix=self.place_shadow())
+        if not self.done:
+            self.matrix[1:,:,:] = 0
+            self.matrix = self.blend(matrix=self.place_shadow())
 
     def draw_surface(self):
         """
@@ -687,10 +688,11 @@ class Matris(object):
         return None
 
     def get_state(self):
-        board = self.matrix[:,2:,:].copy()
+        board = self.matrix.copy()
         board[board>0] = 1
         # combine 3 channels into one
-        state_info = (board[0] + board[1] * 2 + board[2] * 3)[np.newaxis,:,:]
+        # state_info = (board[0] + board[1] * 2 + board[2] * 3)[np.newaxis,:,:]
+        state_info = board
 
         # state_info = {
         #     'board': board,
@@ -701,6 +703,16 @@ class Matris(object):
         
         return state_info
 
+    def get_info(self):
+        info = {
+            'lines': self.lines,
+            'score': self.score,
+            'level': self.level,
+            'current': self.color_map[self.current_tetromino[0]] - 1,
+            'next': self.color_map[self.next_tetromino[0]] - 1,
+            'hold': self.color_map[self.held_tetromino[0]] - 1 if self.held_tetromino else 7,
+        }
+        return info
 
 class Game(object):
     def main(self, screen):
