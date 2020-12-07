@@ -52,10 +52,10 @@ class MatrisEnv(gym.Env):
         line_cnt = state[0].sum(1).reshape(-1)
         covered_area = line_cnt.sum()
         highest_row = 22 - np.arange(22)[line_cnt>0].min() if covered_area>0 else 0
-        covered_area = 1 if covered_area==0 else covered_area
-        penalty = highest_row ** 2 + 10 * highest_row / covered_area
+        penalty = highest_row * 10 + 10 * (1 - covered_area / (10*highest_row+0.01))
 
         reward -= penalty
+        reward /= 1000
 
         return state, reward, done, info
 
