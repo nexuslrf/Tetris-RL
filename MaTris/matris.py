@@ -546,8 +546,16 @@ class Matris(object):
         the lines are counted and cleared, and a new tetromino is chosen.
         """
         self.locked = True
-        self.matrix[1:,:,:] = 0
-        self.matrix = self.blend()
+        self.needs_redraw = True
+
+        tmp = self.blend()
+        if tmp is not None:
+            self.matrix = tmp
+        else:
+            self.gameover_sound.play()
+            self.done = True
+            self.gameover()
+            return
 
         lines_cleared = self.remove_lines()
         self.lines += lines_cleared
@@ -588,7 +596,6 @@ class Matris(object):
             self.done = True
             self.gameover()
             
-        self.needs_redraw = True
 
     def remove_lines(self):
         """
@@ -599,6 +606,8 @@ class Matris(object):
             #Checks if row if full, for each row
             line = (y, [])
             for x in range(MATRIX_WIDTH):
+                if self.matrix is None:
+                    print("bug!")
                 if self.matrix[0,y,x]:
                     line[1].append(x)
             if len(line[1]) == MATRIX_WIDTH:
