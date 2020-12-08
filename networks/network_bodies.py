@@ -104,13 +104,14 @@ class MultiBranchBlock(nn.Module):
     def __init__(self, in_channels, branch_channels=None, kernel_sizes=None, paddings=None):
         super(MultiBranchBlock, self).__init__()
         self.branches = nn.ModuleList(
-            ResidualBlock(in_channels=in_channels, out_channels=channels, kernel_size=kernel_size, padding=padding) 
-            for channels, kernel_size, padding in zip(branch_channels, kernel_sizes, paddings)
+            ResidualBlock(in_channels=in_channels, out_channels=branch_channels, kernel_size=kernel_size, padding=padding) 
+            for kernel_size, padding in zip(kernel_sizes, paddings)
         )
     
     def forward(self, x):
         outs = [branch(x) for branch in self.branches]
-        return torch.cat(outs, dim=1)
+        return sum(outs)
+        # return torch.cat(outs, dim=1)
 
 
 class TetrisBodyV2(nn.Module):
@@ -122,19 +123,30 @@ class TetrisBodyV2(nn.Module):
         self.noisy=noisy
 
         self.blocks = nn.Sequential(
-            MultiBranchBlock(in_channels=3, branch_channels=[8, 8, 16], kernel_sizes=[(9, 1), (1, 9), (5, 5)], paddings=[(4, 0), (0, 4), (2, 2)]),
-            MultiBranchBlock(in_channels=32, branch_channels=[16, 16, 32], kernel_sizes=[(9, 1), (1, 9), (5, 5)], paddings=[(4, 0), (0, 4), (2, 2)]),
-            MultiBranchBlock(in_channels=64, branch_channels=[8, 8, 16], kernel_sizes=[(9, 1), (1, 9), (5, 5)], paddings=[(4, 0), (0, 4), (2, 2)]),
+            MultiBranchBlock(in_channels=6, branch_channels=64, kernel_sizes=[(11, 1), (1, 11), (5, 5)], paddings=[(5, 0), (0, 5), (2, 2)]),
+            MultiBranchBlock(in_channels=64, branch_channels=64, kernel_sizes=[(11, 1), (1, 11), (5, 5)], paddings=[(5, 0), (0, 5), (2, 2)]),
+            MultiBranchBlock(in_channels=64, branch_channels=64, kernel_sizes=[(11, 1), (1, 11), (5, 5)], paddings=[(5, 0), (0, 5), (2, 2)]),
         )
+    
+    def preprocess(self, x):
+        x0 = torch.zeros(size=(x.size(0), 3, 23, 12), dtype=torch.float32).to(x.device)
+        x0[:, 0:1] = torch.ones(size=(x.size(0), 1, 23, 12), dtype=torch.float32)
+        x0[:, :, 0:22, 1:11] = x
+        x = x0
+        x = torch.cat([x, 1.0 - x], dim=1)
+        return x
         
     def forward(self, x):
+        x = self.preprocess(x)
         x = self.blocks(x)
         x = torch.flatten(x, 1)
         return x
     
     def feature_size(self):
         with torch.no_grad():
-            return self.blocks(torch.zeros(1, *self.input_shape)).reshape(1, -1).size(1)
+            x = torch.zeros(1, *self.input_shape)
+            x = self.preprocess(x)
+            return self.blocks(x).reshape(1, -1).size(1)
 
     def sample_noise(self):
         pass

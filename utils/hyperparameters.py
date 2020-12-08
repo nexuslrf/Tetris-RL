@@ -38,9 +38,9 @@ class Config(object):
         self.LR=1e-4
 
         #memory
-        self.TARGET_NET_UPDATE_FREQ = 1000
+        self.TARGET_NET_UPDATE_FREQ = 10
         self.EXP_REPLAY_SIZE = 100000
-        self.BATCH_SIZE = 32
+        self.BATCH_SIZE = 128
         self.PRIORITY_ALPHA=0.6
         self.PRIORITY_BETA_START=0.4
         self.PRIORITY_BETA_FRAMES = 100000
@@ -50,7 +50,8 @@ class Config(object):
 
         #Learning control variables
         self.LEARN_START = 1000
-        self.MAX_FRAMES=100000
+        self.MAX_FRAMES = 100000
+        self.TRAIN_FREQ = 50
 
         #Categorical Params
         self.ATOMS = 51

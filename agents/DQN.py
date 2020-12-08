@@ -5,7 +5,7 @@ import torch.optim as optim
 
 from agents.BaseAgent import BaseAgent
 from networks.networks import DQN
-from networks.network_bodies import AtariBody, SimpleBody, TetrisBody, TetrisBody_V2
+from networks.network_bodies import AtariBody, SimpleBody, TetrisBody
 from utils.ReplayMemory import ExperienceReplayMemory, PrioritizedReplayMemory
 
 from timeit import default_timer as timer
@@ -17,8 +17,6 @@ class Model(BaseAgent):
 
         self.noisy=config.USE_NOISY_NETS
         self.priority_replay=config.USE_PRIORITY_REPLAY
-
-        self.body = body
 
         self.gamma = config.GAMMA
         self.lr = config.LR
@@ -36,7 +34,7 @@ class Model(BaseAgent):
         self.num_actions = env.action_space.n
         self.env = env
 
-        self.declare_networks()
+        self.declare_networks(body)
             
         self.target_model.load_state_dict(self.model.state_dict())
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
@@ -59,9 +57,9 @@ class Model(BaseAgent):
         self.nsteps = config.N_STEPS
         self.nstep_buffer = []
 
-    def declare_networks(self):
-        self.model = DQN(self.num_feats, self.num_actions, noisy=self.noisy, sigma_init=self.sigma_init, body=self.body)
-        self.target_model = DQN(self.num_feats, self.num_actions, noisy=self.noisy, sigma_init=self.sigma_init, body=self.body)
+    def declare_networks(self, body):
+        self.model = DQN(self.num_feats, self.num_actions, noisy=self.noisy, sigma_init=self.sigma_init, body=body)
+        self.target_model = DQN(self.num_feats, self.num_actions, noisy=self.noisy, sigma_init=self.sigma_init, body=body)
 
     def declare_memory(self):
         self.memory = ExperienceReplayMemory(self.experience_replay_size) if not self.priority_replay else PrioritizedReplayMemory(self.experience_replay_size, self.priority_alpha, self.priority_beta_start, self.priority_beta_frames)
@@ -129,7 +127,7 @@ class Model(BaseAgent):
         if self.static_policy:
             return None
 
-        self.append_to_replay(s, a, r, s_)
+        # self.append_to_replay(s, a, r, s_)
 
         if frame < self.learn_start:
             return None

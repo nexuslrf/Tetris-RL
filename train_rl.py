@@ -28,6 +28,18 @@ def num_hidden_boxes(c):
                 cnt += 1
     return cnt
 
+def num_hidding_boxes(c):
+    n, m = c.shape
+    cnt = 0
+    for j in range(m):
+        hidden = False
+        for i in range(n-1, -1, -1):
+            if c[i, j] == 0:
+                hidden = True
+            if hidden and c[i, j] != 0:
+                cnt += 1
+    return cnt
+
 def num_closed_boxes(c):
     n, m = c.shape
     directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]
@@ -72,7 +84,7 @@ def boxes_height(c):
 
 def board_base_score(c):
     n, m = c.shape
-    layer2score = [d / 10.0 for d in range(n)]
+    layer2score = [d ** 1.5 / 10.0 for d in range(n)]
     score = 0
     for i in range(n):
         for j in range(m):
@@ -137,32 +149,37 @@ def print_observation(ob, stdcsr=None):
         else:
             print()
     if stdcsr:
-        stdcsr.addstr(f'Base score: {board_base_score(ob[0]+ob[1]):6.1f} | Height: {boxes_height(ob[0] + ob[1]):2} | Hidden boxes: {num_hidden_boxes(ob[0]+ob[1]):2} | Closed boxes: {num_closed_boxes(ob[0]+ob[1]):2} | Shared edges: {num_shared_edges(ob[0], ob[1])}\n')
+        stdcsr.addstr(f'Base score: {board_base_score(ob[0]+ob[2]):6.1f} | Height: {boxes_height(ob[0] + ob[2]):2} | Hidden boxes: {num_hidden_boxes(ob[0]+ob[2]):2} | Closed boxes: {num_closed_boxes(ob[0]+ob[2]):2} | Shared edges: {num_shared_edges(ob[0], ob[2])}\n')
     else:
-        print(f'Base score: {board_base_score(ob[0]+ob[1]):4.1f} | Height: {boxes_height(ob[0] + ob[1])} | Hidden boxes: {num_hidden_boxes(ob[0]+ob[1])} | Closed boxes: {num_closed_boxes(ob[0]+ob[1])} | Shared edges: {num_shared_edges(ob[0], ob[1])}')
+        print(f'Base score: {board_base_score(ob[0]+ob[2]):4.1f} | Height: {boxes_height(ob[0] + ob[2])} | Hidden boxes: {num_hidden_boxes(ob[0]+ob[2])} | Closed boxes: {num_closed_boxes(ob[0]+ob[2])} | Shared edges: {num_shared_edges(ob[0], ob[2])}')
 
 
 
 def penalize_hidden_boxes(p, c):
-    return -1 * (num_hidden_boxes(c[0] + c[1]) - num_hidden_boxes(p[0] + p[1]))
+    return -1 * (num_hidden_boxes(c[0] + c[2]) - num_hidden_boxes(p[0] + p[2]))
+
+def penalize_hidding_boxes(p, c):
+    return -1 * (num_hidden_boxes(c[0] + c[2]) - num_hidden_boxes(p[0] + p[2]))
 
 def penalize_closed_boxes(p, c):
-    return -2 * (num_closed_boxes(c[0] + c[1]) - num_closed_boxes(p[0] + p[1]))
+    return -2 * (num_closed_boxes(c[0] + c[2]) - num_closed_boxes(p[0] + p[2]))
 
 def encourage_shared_edges(p, c):
-    return 1 * (num_shared_edges(c[0], c[1]) - num_shared_edges(p[0], p[1]))
+    return 1 * (num_shared_edges(c[0], c[2]) - num_shared_edges(p[0], p[2]))
 
 def penalize_higher_boxes(p, c):
-    return -5 * (boxes_height(c[0] + c[1]) - boxes_height(p[0] + p[1]))
+    return -5 * (boxes_height(c[0] + c[2]) ** 1.5 - boxes_height(p[0] + p[2]) ** 1.5)
 
 def encourage_lower_layers(p, c):
-    return board_base_score(c[0] + c[1]) - board_base_score(p[0] + p[1])
+    return board_base_score(c[0] + c[2]) - board_base_score(p[0] + p[2])
 
 reward_functions = [
     penalize_closed_boxes,
-    penalize_hidden_boxes,
+    # penalize_hidden_boxes,
+    penalize_hidding_boxes,
     encourage_shared_edges,
-    penalize_higher_boxes
+    penalize_higher_boxes,
+    encourage_lower_layers
 ]
 
 def main(stdcsr=None):
@@ -188,7 +205,9 @@ def main(stdcsr=None):
         observation, reward, done, info = env.step(action)
         observation = None if done else observation
 
-        model.update(prev_observation, action, reward, observation, frame_idx)
+        model.append_to_replay(prev_observation, action, reward, observation)
+        if frame_idx % config.TRAIN_FREQ == 0:
+            model.update(prev_observation, action, reward, observation, frame_idx)
         episode_reward += reward
         lines = info['lines']
 
