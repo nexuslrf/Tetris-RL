@@ -1,4 +1,6 @@
+import curses
 import os
+from curses import wrapper
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 from timeit import default_timer as timer
@@ -12,21 +14,6 @@ from MaTris.actions import ACTIONS
 from agents.DQN import Model
 from utils.hyperparameters import Config
 from utils.ReplayMemory import ExperienceReplayMemory
-
-def print_board(c):
-    n, m = c.shape
-    for i in range(n+2):
-        for j in range(m+2):
-            if (i == 0 or i == n+1) and (j == 0 or j == m+1):
-                ch = '+'
-            elif i == 0 or i == n+1:
-                ch = '-'
-            elif j == 0 or j == m+1:
-                ch = '|'
-            else:
-                ch = '* '[c[i-1, j-1] == 0]
-            print(ch, end="")
-        print()
 
 def num_hidden_boxes(c):
     n, m = c.shape
@@ -92,33 +79,67 @@ def board_base_score(c):
                 score += layer2score[i]
     return score
 
-def print_observation(ob):
+def print_observation(ob, stdcsr=None):
     if ob is None:
-        print()
-        print(' --- GAME OVER ---')
-        print()
-        return
+        ob = np.zeros(shape=(3, 21, 10), dtype=np.int)
     n, m = ob[0].shape
+    if stdcsr:
+        curses.init_pair(1, curses.COLOR_WHITE, curses.COLOR_BLACK)
+        curses.init_pair(2, curses.COLOR_YELLOW, curses.COLOR_BLACK)
+        curses.init_pair(3, curses.COLOR_CYAN, curses.COLOR_BLACK)
     for i in range(n+2):
         for j in range(m+2):
+            clr = 1
             if (i == 0 or i == n+1) and (j == 0 or j == m+1):
-                ch = '+'
+                pch = '+'
+                if stdcsr:
+                    if i == 0 and j == 0:
+                        ch = curses.ACS_ULCORNER
+                    elif i == 0 and j == m+1:
+                        ch = curses.ACS_URCORNER
+                    elif i == n+1 and j == 0:
+                        ch = curses.ACS_LLCORNER
+                    else:
+                        ch = curses.ACS_LRCORNER
             elif i == 0 or i == n+1:
-                ch = '-'
+                pch = '-'
+                if stdcsr:
+                    ch = curses.ACS_HLINE
             elif j == 0 or j == m+1:
-                ch = '|'
+                pch = '|'
+                if stdcsr:
+                    ch = curses.ACS_VLINE
             else:
                 if ob[0, i-1, j-1] != 0:
-                    ch = '.'
+                    pch = '.'
+                    if stdcsr:
+                        ch = curses.ACS_BLOCK
                 elif ob[1, i-1, j-1] != 0:
-                    ch = '~'
+                    pch = '~'
+                    if stdcsr:
+                        ch = curses.ACS_BLOCK
+                        clr = 2
                 elif ob[2, i-1, j-1] != 0:
-                    ch = 'x'
+                    pch = 'x'
+                    if stdcsr:
+                        ch = curses.ACS_BLOCK
+                        clr = 3
                 else:
+                    pch = ' '
                     ch = ' '
-            print(ch, end="")
-        print()
-    print(f'Base score: {board_base_score(ob[0]+ob[1]):4.1f} | Height: {boxes_height(ob[0] + ob[1])} | Hidden boxes: {num_hidden_boxes(ob[0]+ob[1])} | Closed boxes: {num_closed_boxes(ob[0]+ob[1])} | Shared edges: {num_shared_edges(ob[0], ob[1])}')
+            if stdcsr:
+                stdcsr.addch(ch, curses.color_pair(clr))
+            else:
+                print(pch, end="")
+        if stdcsr:
+            stdcsr.addstr('\n')
+        else:
+            print()
+    if stdcsr:
+        stdcsr.addstr(f'Base score: {board_base_score(ob[0]+ob[1]):6.1f} | Height: {boxes_height(ob[0] + ob[1]):2} | Hidden boxes: {num_hidden_boxes(ob[0]+ob[1]):2} | Closed boxes: {num_closed_boxes(ob[0]+ob[1]):2} | Shared edges: {num_shared_edges(ob[0], ob[1])}\n')
+    else:
+        print(f'Base score: {board_base_score(ob[0]+ob[1]):4.1f} | Height: {boxes_height(ob[0] + ob[1])} | Hidden boxes: {num_hidden_boxes(ob[0]+ob[1])} | Closed boxes: {num_closed_boxes(ob[0]+ob[1])} | Shared edges: {num_shared_edges(ob[0], ob[1])}')
+
 
 
 def penalize_hidden_boxes(p, c):
@@ -143,7 +164,10 @@ reward_functions = [
     penalize_higher_boxes
 ]
 
-if __name__ == "__main__":
+def main(stdcsr=None):
+    if stdcsr:
+        stdcsr.clear()  # clear screen
+
     config = Config()
     config.USE_NOISY_NETS = True
     config.USE_PRIORITY_REPLAY = True
@@ -167,8 +191,14 @@ if __name__ == "__main__":
         episode_reward += reward
         lines = info['lines']
 
-        print_observation(observation)
-        print(f"T: {frame_idx:5} | Action: {ACTIONS[action][0]:11} | Reward: {reward:7.3f} | Episode reward {episode_reward:7.3f}| Lines: {lines} | Epsilon {epsilon:.3f}")
+        if stdcsr:
+            stdcsr.clear()
+            print_observation(observation, stdcsr)
+            stdcsr.addstr(f"T: {frame_idx:5} | Action: {ACTIONS[action][0]:11} | Reward: {reward:7.3f} | Episode reward {episode_reward:7.3f}| Lines: {lines} | Epsilon {epsilon:.3f}\n")
+            stdcsr.refresh()
+        else:
+            print_observation(observation)
+            print(f"T: {frame_idx:5} | Action: {ACTIONS[action][0]:11} | Reward: {reward:7.3f} | Episode reward {episode_reward:7.3f}| Lines: {lines} | Epsilon {epsilon:.3f}")
 
         if done:
             observation = env.reset()
@@ -181,3 +211,10 @@ if __name__ == "__main__":
     model.save_w()
     env.close()
 
+
+if __name__ == "__main__":
+    use_text_gui = True
+    if use_text_gui:
+        wrapper(main)
+    else:
+        main()
