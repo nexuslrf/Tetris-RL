@@ -49,7 +49,7 @@ class Config(object):
         self.SIGMA_INIT=0.5
 
         #Learning control variables
-        self.LEARN_START = 10000
+        self.LEARN_START = 1000
         self.MAX_FRAMES=100000
 
         #Categorical Params

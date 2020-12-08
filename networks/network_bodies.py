@@ -85,3 +85,56 @@ class TetrisBody(nn.Module):
 
     def sample_noise(self):
         pass
+
+class ResidualBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, padding):
+        super(ResidualBlock, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride=1, padding=padding)
+        self.bn = nn.BatchNorm2d(out_channels)
+        self.relu = nn.LeakyReLU(inplace=True)
+        if in_channels == out_channels:
+            self.skip = nn.Sequential()
+        else:
+            self.skip = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0)
+
+    def forward(self, x):
+        return self.relu(self.bn(self.conv(x) + self.skip(x)))
+
+class MultiBranchBlock(nn.Module):
+    def __init__(self, in_channels, branch_channels=None, kernel_sizes=None, paddings=None):
+        super(MultiBranchBlock, self).__init__()
+        self.branches = nn.ModuleList(
+            ResidualBlock(in_channels=in_channels, out_channels=channels, kernel_size=kernel_size, padding=padding) 
+            for channels, kernel_size, padding in zip(branch_channels, kernel_sizes, paddings)
+        )
+    
+    def forward(self, x):
+        outs = [branch(x) for branch in self.branches]
+        return torch.cat(outs, dim=1)
+
+
+class TetrisBodyV2(nn.Module):
+    def __init__(self, input_shape, num_actions, noisy=False, sigma_init=0.5):
+        super(TetrisBodyV2, self).__init__()
+        
+        self.input_shape = input_shape
+        self.num_actions = num_actions
+        self.noisy=noisy
+
+        self.blocks = nn.Sequential(
+            MultiBranchBlock(in_channels=3, branch_channels=[8, 8, 16], kernel_sizes=[(9, 1), (1, 9), (5, 5)], paddings=[(4, 0), (0, 4), (2, 2)]),
+            MultiBranchBlock(in_channels=32, branch_channels=[16, 16, 32], kernel_sizes=[(9, 1), (1, 9), (5, 5)], paddings=[(4, 0), (0, 4), (2, 2)]),
+            MultiBranchBlock(in_channels=64, branch_channels=[8, 8, 16], kernel_sizes=[(9, 1), (1, 9), (5, 5)], paddings=[(4, 0), (0, 4), (2, 2)]),
+        )
+        
+    def forward(self, x):
+        x = self.blocks(x)
+        x = torch.flatten(x, 1)
+        return x
+    
+    def feature_size(self):
+        with torch.no_grad():
+            return self.blocks(torch.zeros(1, *self.input_shape)).reshape(1, -1).size(1)
+
+    def sample_noise(self):
+        pass

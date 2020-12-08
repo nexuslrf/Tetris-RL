@@ -11,12 +11,14 @@ from utils.ReplayMemory import ExperienceReplayMemory, PrioritizedReplayMemory
 from timeit import default_timer as timer
 
 class Model(BaseAgent):
-    def __init__(self, static_policy=False, env=None, config=None):
+    def __init__(self, static_policy=False, env=None, config=None, body=None):
         super(Model, self).__init__()
         self.device = config.device
 
         self.noisy=config.USE_NOISY_NETS
         self.priority_replay=config.USE_PRIORITY_REPLAY
+
+        self.body = body
 
         self.gamma = config.GAMMA
         self.lr = config.LR
@@ -58,8 +60,8 @@ class Model(BaseAgent):
         self.nstep_buffer = []
 
     def declare_networks(self):
-        self.model = DQN(self.num_feats, self.num_actions, noisy=self.noisy, sigma_init=self.sigma_init, body=TetrisBody)
-        self.target_model = DQN(self.num_feats, self.num_actions, noisy=self.noisy, sigma_init=self.sigma_init, body=TetrisBody)
+        self.model = DQN(self.num_feats, self.num_actions, noisy=self.noisy, sigma_init=self.sigma_init, body=self.body)
+        self.target_model = DQN(self.num_feats, self.num_actions, noisy=self.noisy, sigma_init=self.sigma_init, body=self.body)
 
     def declare_memory(self):
         self.memory = ExperienceReplayMemory(self.experience_replay_size) if not self.priority_replay else PrioritizedReplayMemory(self.experience_replay_size, self.priority_alpha, self.priority_beta_start, self.priority_beta_frames)

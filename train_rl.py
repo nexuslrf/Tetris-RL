@@ -11,6 +11,7 @@ import os
 
 from MaTris.gym_matris import MatrisEnv
 from MaTris.actions import ACTIONS
+from networks.network_bodies import TetrisBodyV2
 from agents.DQN import Model
 from utils.hyperparameters import Config
 from utils.ReplayMemory import ExperienceReplayMemory
@@ -172,7 +173,7 @@ def main(stdcsr=None):
     config.USE_NOISY_NETS = True
     config.USE_PRIORITY_REPLAY = True
     env = MatrisEnv(no_display=True, real_tick=False, reward_functions=reward_functions)
-    model = Model(env=env, config=config)
+    model = Model(env=env, config=config, body=TetrisBodyV2)
 
     episode_reward = 0
     lines = 0
