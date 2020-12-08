@@ -4,11 +4,11 @@ from pygame import Rect, Surface
 import random
 import numpy as np
 import os
-from . import kezmenu
-from .tetrominoes import list_of_tetrominoes, list_of_start_tetrominoes
-from .tetrominoes import rotate, tetrominoes
+import kezmenu
+from tetrominoes import list_of_tetrominoes, list_of_start_tetrominoes
+from tetrominoes import rotate, tetrominoes
 
-from .scores import load_score, write_score, Score
+from scores import load_score, write_score, Score
 
 class GameOver(Exception):
     """Exception used for its control flow properties"""
@@ -86,6 +86,7 @@ class Matris(object):
         repeat_idx = self.next_tetromino_bag.index(next_shape)
         self.next_tetromino_bag = [next_shape] + self.next_tetromino_bag
         self.next_tetromino_idx = 1
+        self.drop_bonus = True
 
         self.held_tetromino = None
         self.recently_swapped = True
@@ -182,8 +183,8 @@ class Matris(object):
         amount = 0
         while self.request_movement('down'):
             amount += 1
-
-        self.score += 2 * amount
+        if self.drop_bonus:
+            self.score += 2 * amount
         self.lock_tetromino()
 
 
@@ -305,6 +306,9 @@ class Matris(object):
                 self.movement_keys['right'] = 1
             elif action == 'hold':
                 self.swap_held()
+            elif action == 'bottom drop':
+                while self.request_movement('down'):
+                    pass
 
         if not self.request_movement('down'): #Places tetromino if it cannot move further down
             self.drop_trials -= 1
