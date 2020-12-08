@@ -12,12 +12,14 @@ ROTATION_DIR = [
 ]
 
 DROP_METHOD = [
-    "sonic drop", "hard drop"
+    # "sonic drop", "hard drop"
+    "sonic drop"
 ]
 
 item2tuple = lambda x: [(i,) for i in x]
 
-ACTIONS = item2tuple(MOVEMENT_DIR + ROTATION_DIR + DROP_METHOD) + [("no op",),]\
+ACTIONS = item2tuple(MOVEMENT_DIR + ROTATION_DIR + DROP_METHOD) + [("no op",)]
+# ACTIONS = item2tuple(MOVEMENT_DIR + ROTATION_DIR + DROP_METHOD) + [("no op",),]\
     # [combo for combo in itertools.product(MOVEMENT_DIR, ROTATION_DIR)] + \
     # ("hold",)]
 
