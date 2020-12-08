@@ -4,11 +4,11 @@ from pygame import Rect, Surface
 import random
 import numpy as np
 import os
-from . import kezmenu
-from .tetrominoes import list_of_tetrominoes, list_of_start_tetrominoes
-from .tetrominoes import rotate, tetrominoes
+import kezmenu
+from tetrominoes import list_of_tetrominoes, list_of_start_tetrominoes
+from tetrominoes import rotate, tetrominoes
 
-from .scores import load_score, write_score, Score
+from scores import load_score, write_score, Score
 
 class GameOver(Exception):
     """Exception used for its control flow properties"""
@@ -86,6 +86,7 @@ class Matris(object):
         repeat_idx = self.next_tetromino_bag.index(next_shape)
         self.next_tetromino_bag = [next_shape] + self.next_tetromino_bag
         self.next_tetromino_idx = 1
+        self.drop_bonus = True
 
         self.held_tetromino = None
         self.recently_swapped = True
@@ -182,8 +183,8 @@ class Matris(object):
         amount = 0
         while self.request_movement('down'):
             amount += 1
-
-        self.score += 2 * amount
+        if self.drop_bonus:
+            self.score += 2 * amount
         self.lock_tetromino()
 
 
@@ -305,6 +306,9 @@ class Matris(object):
                 self.movement_keys['right'] = 1
             elif action == 'hold':
                 self.swap_held()
+            elif action == 'bottom drop':
+                while self.request_movement('down'):
+                    pass
 
         if not self.request_movement('down'): #Places tetromino if it cannot move further down
             self.drop_trials -= 1
@@ -326,6 +330,83 @@ class Matris(object):
             self.update_matrix()
 
         return self.score - pre_score
+
+    def fake_update(self, actions):
+        """
+        One step update
+        """
+        ori_rotation = self.tetromino_rotation
+        ori_position = self.tetromino_position
+        ori_matrix = self.matrix.copy()
+        ori_score = self.score
+        ori_lines = self.lines
+        sonic_drop = False
+        hard_drop = False
+        for action in actions:
+            #Controls movement of the tetromino
+            if action == 'hard drop':
+                while self.request_movement('down'):
+                    pass
+                self.lock_tetromino(False)
+            elif action == 'sonic drop':
+                self.request_movement('down')
+            elif action == 'forward':
+                self.request_forward_rotation()
+            elif action == 'reverse':
+                self.request_reverse_rotation()
+            elif action == 'left':
+                self.request_movement('left')
+                self.movement_keys['left'] = 0
+                self.movement_keys_timer = (-self.movement_keys_speed)*2
+            elif action == 'right':
+                self.request_movement('right')
+                self.movement_keys['right'] = 0
+                self.movement_keys_timer = (-self.movement_keys_speed)*2
+            elif action == 'left-press':
+                self.request_movement('left')
+                self.movement_keys['left'] = 1
+            elif action == 'right-press':
+                self.request_movement('right')
+                self.movement_keys['right'] = 1
+            elif action == 'hold':
+                self.swap_held()
+            elif action == 'bottom drop':
+                while self.request_movement('down'):
+                    pass
+        
+
+        if not self.request_movement('down'): #Places tetromino if it cannot move further down
+            self.drop_trials -= 1
+            if self.drop_trials == 0:
+                self.lock_tetromino(False)
+                self.drop_trials = DROP_TRIALS
+            # else:
+            #     if sonic_drop:
+            #         # self.score += 1
+            #         pass
+
+        # Try to get 4 parameters
+        board = self.matrix[0].copy()
+        board[board>0] = 1
+        heights = (board.shape[0] - board.argmax(0))
+        heights[heights==board.shape[0]] = 0
+        sum_height = heights.sum()
+        height_diff = [heights[i+1] - heights[i] for i in range(len(heights)-1)]
+        sum_diff = np.sum(np.abs(height_diff))
+        max_height = heights.max()
+        num_holes = max_height * board.shape[1] - board.sum()
+        line_clr = self.lines - ori_lines
+        reward = self.score - ori_score
+
+        self.needs_redraw = False
+        self.matrix = ori_matrix
+        self.tetromino_rotation = ori_rotation
+        self.tetromino_position = ori_position
+        self.score = ori_score
+        self.lines = ori_lines
+
+        return sum_height, sum_diff, max_height, num_holes # reward
+
 
     def update_matrix(self):
         if not self.done:
@@ -540,7 +621,7 @@ class Matris(object):
 
         return border
 
-    def lock_tetromino(self):
+    def lock_tetromino(self, set_next=True):
         """
         This method is called whenever the falling tetromino "dies". `self.matrix` is updated,
         the lines are counted and cleared, and a new tetromino is chosen.
@@ -576,7 +657,10 @@ class Matris(object):
                 self.linescleared_sound.play()
             print("Wow: " + score_type + "!")
 
-        self.score = self.score + (b2b * Score.score_table[score_type] + (self.combo - 1) * 50) * self.level
+        if score_type in Score.score_list:
+            self.score = self.score + (b2b * Score.score_table[score_type] + (self.combo - 1) * 50) * self.level
+
+        self.combo = self.combo + 1 if score_type in Score.score_list else 1
 
         if not self.played_highscorebeaten_sound and self.score > self.highscore:
             if self.highscore != 0:
@@ -587,9 +671,10 @@ class Matris(object):
             self.levelup_sound.play()
             self.level += 1
 
-        self.combo = self.combo + 1 if score_type in Score.score_list else 1
-
-        self.set_tetrominoes()
+        if set_next:
+            self.set_tetrominoes()
+        else:
+            self.tetromino_position = (0,4)
 
         if  self.matrix[0,:2,:].sum()>0 or self.blend() is None:
             self.gameover_sound.play()
