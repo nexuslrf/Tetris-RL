@@ -4,11 +4,11 @@ from pygame import Rect, Surface
 import random
 import numpy as np
 import os
-import kezmenu
-from tetrominoes import list_of_tetrominoes, list_of_start_tetrominoes
-from tetrominoes import rotate, tetrominoes
+from . import kezmenu
+from .tetrominoes import list_of_tetrominoes, list_of_start_tetrominoes
+from .tetrominoes import rotate, tetrominoes
 
-from scores import load_score, write_score, Score
+from .scores import load_score, write_score, Score
 
 class GameOver(Exception):
     """Exception used for its control flow properties"""
