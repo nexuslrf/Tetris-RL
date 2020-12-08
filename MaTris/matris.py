@@ -339,6 +339,7 @@ class Matris(object):
         ori_position = self.tetromino_position
         ori_matrix = self.matrix.copy()
         ori_score = self.score
+        ori_lines = self.lines
         sonic_drop = False
         hard_drop = False
         for action in actions:
@@ -385,22 +386,24 @@ class Matris(object):
             #         pass
 
         # Try to get 4 parameters
-        board = self.matrix[0]
+        board = self.matrix[0].copy()
+        board[board>0] = 1
         heights = (board.shape[0] - board.argmax(0))
         heights[heights==board.shape[0]] = 0
         sum_height = heights.sum()
         height_diff = [heights[i+1] - heights[i] for i in range(len(heights)-1)]
         sum_diff = np.sum(np.abs(height_diff))
         max_height = heights.max()
-        num_holes = sum_height - board.sum()
-
+        num_holes = max_height * board.shape[1] - board.sum()
+        line_clr = self.lines - ori_lines
+        reward = self.score - ori_score
 
         self.needs_redraw = False
         self.matrix = ori_matrix
         self.tetromino_rotation = ori_rotation
         self.tetromino_position = ori_position
-        reward = self.score - ori_score
         self.score = ori_score
+        self.lines = ori_lines
 
         return sum_height, sum_diff, max_height, num_holes # reward
 
@@ -654,7 +657,10 @@ class Matris(object):
                 self.linescleared_sound.play()
             print("Wow: " + score_type + "!")
 
-        self.score = self.score + (b2b * Score.score_table[score_type] + (self.combo - 1) * 50) * self.level
+        if score_type in Score.score_list:
+            self.score = self.score + (b2b * Score.score_table[score_type] + (self.combo - 1) * 50) * self.level
+
+        self.combo = self.combo + 1 if score_type in Score.score_list else 1
 
         if not self.played_highscorebeaten_sound and self.score > self.highscore:
             if self.highscore != 0:
@@ -664,8 +670,6 @@ class Matris(object):
         if self.level < MAX_LEVEL and self.lines >= self.level*10:
             self.levelup_sound.play()
             self.level += 1
-
-        self.combo = self.combo + 1 if score_type in Score.score_list else 1
 
         if set_next:
             self.set_tetrominoes()
