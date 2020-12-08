@@ -5,7 +5,7 @@ import torch.optim as optim
 
 from agents.BaseAgent import BaseAgent
 from networks.networks import DQN
-from networks.network_bodies import AtariBody, SimpleBody, TetrisBody
+from networks.network_bodies import AtariBody, SimpleBody, TetrisBody, TetrisBody_V2
 from utils.ReplayMemory import ExperienceReplayMemory, PrioritizedReplayMemory
 
 from timeit import default_timer as timer
@@ -58,8 +58,8 @@ class Model(BaseAgent):
         self.nstep_buffer = []
 
     def declare_networks(self):
-        self.model = DQN(self.num_feats, self.num_actions, noisy=self.noisy, sigma_init=self.sigma_init, body=TetrisBody)
-        self.target_model = DQN(self.num_feats, self.num_actions, noisy=self.noisy, sigma_init=self.sigma_init, body=TetrisBody)
+        self.model = DQN(self.num_feats, self.num_actions, noisy=self.noisy, sigma_init=self.sigma_init, body=TetrisBody_V2)
+        self.target_model = DQN(self.num_feats, self.num_actions, noisy=self.noisy, sigma_init=self.sigma_init, body=TetrisBody_V2)
 
     def declare_memory(self):
         self.memory = ExperienceReplayMemory(self.experience_replay_size) if not self.priority_replay else PrioritizedReplayMemory(self.experience_replay_size, self.priority_alpha, self.priority_beta_start, self.priority_beta_frames)
@@ -139,8 +139,8 @@ class Model(BaseAgent):
         # Optimize the model
         self.optimizer.zero_grad()
         loss.backward()
-        for param in self.model.parameters():
-            param.grad.data.clamp_(-1, 1)
+        # for param in self.model.parameters():
+        #     param.grad.data.clamp_(-1, 1)
         self.optimizer.step()
 
         self.update_target_model()
