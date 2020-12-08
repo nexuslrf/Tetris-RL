@@ -69,6 +69,13 @@ class MatrisEnv(gym.Env):
 
         return state, reward, done, info
 
+    def peek_step(self, action_id):
+        self.game.matris.drop_bonus = False
+        timepassed = self.game.clock.tick(50) if self.real_tick else 20
+        previous_state = self.game.matris.get_state()
+        act = generate_action_seq(self.action_list[action_id])
+        return self.game.matris.fake_update(act)
+
     def reset(self):
         self.game.gym_init(self.screen)
         return self.game.matris.get_state()
