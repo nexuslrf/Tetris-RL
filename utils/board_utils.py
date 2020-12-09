@@ -1,4 +1,7 @@
-import curses
+try:
+    import curses
+except:
+    print("your env does not support curses package")
 import numpy as np
 
 def num_hidden_boxes(state):
@@ -128,6 +131,7 @@ def board_quadratic_uneveness(state):
 
 def board_line_score(state, scores=None):
     c = state[0] + state[2]
+    c = c.astype(np.int)
     n, m = c.shape
     if scores is None:
         scores = [0] * 11
@@ -220,6 +224,23 @@ def encourage_lower_layers(p, c):
     if c is None: 
         return 0.0
     return board_box_height_score(c) - board_box_height_score(p)
+
+def occlusion_penalty(p, c):
+    def foo(board):
+        if board.sum() > 0:
+            occlusion_height = np.argmax(board, axis=0)
+            occlusion_height[occlusion_height == 0] = board.shape[0] # 22
+            occluded_height = board.shape[0] - np.argmin(np.flipud(board), axis=0)
+            occlusion_score = (occluded_height - occlusion_height).sum()
+            return occlusion_score
+        else:
+            return 0
+
+    occlusion_delta = foo(c[0]) - foo(p[0])
+    if occlusion_delta > 0:
+        occlusion_delta = occlusion_delta * 20 + 300
+
+    return -1 * occlusion_delta
 
 def print_observation(ob, stdcsr=None):
     if ob is None:
