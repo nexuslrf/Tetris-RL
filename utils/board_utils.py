@@ -117,8 +117,6 @@ def board_line_score(state, scores=None):
             scores[i] = i ** 1.5
     score = 0
     for i in range(n):
-        if c[i].sum() > 10:
-            print("HERE")
         score += scores[c[i].sum()]
     return score
     
@@ -266,7 +264,7 @@ def print_observation(ob, stdcsr=None):
     summary_lines = []
     summary_lines.append(f'{"Counter":>20}:')
     summary_lines.extend([f'{name:>20}: {func(ob)}' for name, func in count_functions.items()])
-    summary_lines.append(f'{"Counter":>20}:')
+    summary_lines.append(f'{"Score":>20}:')
     summary_lines.extend([f'{name:>20}: {func(ob):.1f}' for name, func in score_functions.items()])
     summary_str = "\n".join(summary_lines)
     if stdcsr:

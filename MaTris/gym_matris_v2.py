@@ -4,6 +4,7 @@ import gym
 from gym import error, spaces, utils
 from gym.utils import seeding
 
+
 this_dir = os.path.dirname(__file__)
 # Add lib to PYTHONPATH
 lib_path = os.path.join(this_dir)

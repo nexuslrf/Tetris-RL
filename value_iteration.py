@@ -102,6 +102,7 @@ class Agent(object):
         self.episode_rewards = []
         self.losses = []
         self.rounds = []
+        self.lines = []
 
         self.batch_size = config.BATCH_SIZE
         self.lr = config.LR
@@ -124,30 +125,32 @@ class Agent(object):
             # assert np.allclose(observation, self.env.game.matris.get_state())
             if np.random.random() >= epsilon or self.static_policy:
                 action_value_pairs = []
+                next_states = []
+                rewards = []
                 for action in range(self.num_actions):
                     next_state, reward, done, _ = self.env.peak_step_srdi(action)
                     if not done:
-                        next_state = torch.tensor([next_state], device=self.device, dtype=torch.float)
-                        action_value_pairs.append((action, reward + float(self.target_model(next_state).item())))
-                if len(action_value_pairs) > 0:
-                    action = max(action_value_pairs, key=lambda x:x[1])[0]
-                    return action
-                else:
-                    return random.choice(range(self.num_actions))
+                        next_states.append(torch.tensor([next_state], device=self.device, dtype=torch.float))
+                        rewards.append(torch.tensor([reward], device=self.device, dtype=torch.float))
+                    else:
+                        rewards.append(torch.tensor([reward], device=self.device, dtype=torch.float))
+                        next_states.append(torch.zeros_like(torch.tensor([observation]), device=self.device, dtype=torch.float))
+                next_states = torch.cat(next_states, dim=0)
+                rewards = torch.cat(rewards, dim=0).unsqueeze(1)
+                expected_values = rewards + self.target_model(next_states)
+                action = torch.argmax(expected_values, dim=0).squeeze().item()
+                return action
             else:
                 return np.random.randint(0, self.num_actions)
 
     def append_to_replay(self, prev_observation, action, reward, observation):
         self.memory.push((prev_observation, action, reward, observation))
 
-    def append_episode_reward(self, reward):
-        self.episode_rewards.append(reward)
-
     def huber(self, x):
         cond = (x.abs() < 1.0).float().detach()
         return 0.5 * x.pow(2) * cond + (x.abs() - 0.5) * (1.0 - cond)
 
-    def update(self):
+    def update(self, step=0):
         self.model.train()
         batch_transaction = self.memory.sample(self.batch_size)
         batch_state, batch_action, batch_reward, batch_next_state = zip(*batch_transaction)
@@ -181,16 +184,22 @@ class Agent(object):
         for param in self.model.parameters():
             param.grad.data.clamp_(-1, 1)
         self.optimizer.step()
-        self.append_loss(loss.item())
+        self.append_loss(step, loss.item())
     
     def update_target_network(self):
         self.target_model.load_state_dict(self.model.state_dict())
+
+    def append_episode_reward(self, step, reward):
+        self.episode_rewards.append((step, reward))
         
-    def append_loss(self, loss):
-        self.losses.append(loss)
+    def append_loss(self, step, loss):
+        self.losses.append((step, loss))
     
-    def append_rounds(self, rounds):
-        self.rounds.append(rounds)
+    def append_rounds(self, step, rounds):
+        self.rounds.append((step, rounds))
+    
+    def append_lines(self, step, lines):
+        self.lines.append((step, lines))
 
     def save(self, dirname):
         os.makedirs(dirname, exist_ok=True)
@@ -200,6 +209,8 @@ class Agent(object):
             json.dump(self.losses, f)
         with open(os.path.join(dirname, 'rounds.json'), 'w') as f:
             json.dump(self.rounds, f)
+        with open(os.path.join(dirname, 'lines.json'), 'w') as f:
+            json.dump(self.lines, f)
         with open(os.path.join(dirname, 'episode_rewards.json'), 'w') as f:
             json.dump(self.episode_rewards, f)
 
@@ -229,7 +240,7 @@ def main(stdcsr=None):
     config.LEARN_START = 200
     config.TRAIN_FREQ = 10
     config.TARGET_NET_UPDATE_FREQ = 100
-    config.SAVE_FREQ = 5000
+    config.SAVE_FREQ = 100
     config.epsilon_start = 0.0
     config.epsilon_final = 0.0
     # config.MAX_FRAMES = 200
@@ -253,7 +264,7 @@ def main(stdcsr=None):
 
         agent.append_to_replay(prev_observation, action, reward, observation)
         if frame_idx >= config.LEARN_START and frame_idx % config.TRAIN_FREQ == 0:
-            agent.update()
+            agent.update(frame_idx)
         
         if frame_idx >= config.LEARN_START and frame_idx % config.TARGET_NET_UPDATE_FREQ == 0:
             agent.update_target_network()
@@ -267,13 +278,14 @@ def main(stdcsr=None):
         print_observation(observation, stdcsr)
         log(f"Time: {time.time() - start_time:.0f}")
         log(f"T: {frame_idx:5}/{config.MAX_FRAMES} | Action: {str(ACTIONS[action]):12} | Reward: {reward:7.3f} | Episode reward {episode_reward:7.3f}| Lines: {lines} | Epsilon {epsilon:.3f}", end='\n')
-        log(f'Losses: {agent.losses[-1] if len(agent.losses) > 0 else 0.0:5.2f}')
+        log(f'Losses: {agent.losses[-1][1] if len(agent.losses) > 0 else 0.0:5.2f}')
 
         if done:
             observation = env.reset()
             assert observation is not None
-            agent.append_episode_reward(episode_reward)
-            agent.append_rounds(rounds)
+            agent.append_episode_reward(frame_idx, episode_reward)
+            agent.append_rounds(frame_idx, rounds)
+            agent.append_lines(frame_idx, lines)
             episode_reward = 0
             rounds = 0
             lines = 0
