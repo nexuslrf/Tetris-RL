@@ -77,7 +77,7 @@ class MatrisEnv(gym.Env):
         previous_state = self.game.matris.get_state()
         self.game.matris.push_state()
         act = generate_action_seq(self.action_list[action_id])
-        reward = self.game.matris.step_update(act, timepassed/1000)
+        reward = self.game.matris.step_update(act, timepassed/1000, set_next=False)
         done = self.game.matris.done
         state = self.game.matris.get_state()
         info = self.game.matris.get_info()

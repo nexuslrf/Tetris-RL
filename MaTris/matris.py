@@ -177,7 +177,7 @@ class Matris(object):
             self.recently_swapped = True
         return True
     
-    def hard_drop(self):
+    def hard_drop(self, set_next=True):
         """
         Instantly places tetrominos in the cells below
         """
@@ -186,7 +186,7 @@ class Matris(object):
             amount += 1
         if self.drop_bonus:
             self.score += 2 * amount
-        self.lock_tetromino()
+        self.lock_tetromino(set_next=set_next)
 
 
     def update(self, timepassed):
@@ -273,7 +273,7 @@ class Matris(object):
         
         return self.needs_redraw
 
-    def step_update(self, actions, timepassed):
+    def step_update(self, actions, timepassed, set_next=True):
         """
         One step update
         """
@@ -284,7 +284,7 @@ class Matris(object):
         for action in actions:
             #Controls movement of the tetromino
             if action == 'hard drop':
-                self.hard_drop()
+                self.hard_drop(set_next=set_next)
             elif action == 'sonic drop':
                 self.request_movement('down')
             elif action == 'forward':
@@ -314,7 +314,7 @@ class Matris(object):
         if not self.request_movement('down'): #Places tetromino if it cannot move further down
             self.drop_trials -= 1
             if self.drop_trials == 0:
-                self.lock_tetromino()
+                self.lock_tetromino(set_next=set_next)
                 self.drop_trials = DROP_TRIALS
             # else:
             #     if sonic_drop:
@@ -383,7 +383,7 @@ class Matris(object):
         One step update
         """
         self.push_state()
-        self.step_update(actions, timepassed=0)
+        self.step_update(actions, timepassed=0, set_next=False)
         # Try to get 4 parameters
         board = self.matrix[0].copy()
         board[board>0] = 1
@@ -403,6 +403,7 @@ class Matris(object):
         if not self.done:
             self.matrix[1:,:,:] = 0
             self.matrix = self.blend(matrix=self.place_shadow())
+
 
     def draw_surface(self):
         """
@@ -666,6 +667,7 @@ class Matris(object):
             self.set_tetrominoes()
         else:
             self.tetromino_position = (0,4)
+            self.locked = False
 
         if  self.matrix[0,:2,:].sum()>0 or self.blend() is None:
             self.gameover_sound.play()
