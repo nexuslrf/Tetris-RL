@@ -38,7 +38,7 @@ class Config(object):
         self.LR=1e-4
 
         #memory
-        self.TARGET_NET_UPDATE_FREQ = 10
+        self.TARGET_NET_UPDATE_FREQ = 500
         self.EXP_REPLAY_SIZE = 100000
         self.BATCH_SIZE = 128
         self.PRIORITY_ALPHA=0.6

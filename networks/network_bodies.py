@@ -115,7 +115,7 @@ class MultiBranchBlock(nn.Module):
 
 
 class TetrisBodyV2(nn.Module):
-    def __init__(self, input_shape, num_actions, noisy=False, sigma_init=0.5):
+    def __init__(self, input_shape, num_actions=None, noisy=False, sigma_init=0.5):
         super(TetrisBodyV2, self).__init__()
         
         self.input_shape = input_shape
@@ -123,9 +123,14 @@ class TetrisBodyV2(nn.Module):
         self.noisy=noisy
 
         self.blocks = nn.Sequential(
-            MultiBranchBlock(in_channels=6, branch_channels=64, kernel_sizes=[(11, 1), (1, 11), (5, 5)], paddings=[(5, 0), (0, 5), (2, 2)]),
+            MultiBranchBlock(in_channels=6, branch_channels=32, kernel_sizes=[(11, 1), (1, 11), (5, 5)], paddings=[(5, 0), (0, 5), (2, 2)]),
+            MultiBranchBlock(in_channels=32, branch_channels=32, kernel_sizes=[(11, 1), (1, 11), (5, 5)], paddings=[(5, 0), (0, 5), (2, 2)]),
+            MultiBranchBlock(in_channels=32, branch_channels=64, kernel_sizes=[(11, 1), (1, 11), (5, 5)], paddings=[(5, 0), (0, 5), (2, 2)]),
+            nn.AdaptiveAvgPool2d(output_size=(12, 6)),
             MultiBranchBlock(in_channels=64, branch_channels=64, kernel_sizes=[(11, 1), (1, 11), (5, 5)], paddings=[(5, 0), (0, 5), (2, 2)]),
             MultiBranchBlock(in_channels=64, branch_channels=64, kernel_sizes=[(11, 1), (1, 11), (5, 5)], paddings=[(5, 0), (0, 5), (2, 2)]),
+            nn.AdaptiveAvgPool2d(output_size=(6, 3)),
+            nn.Flatten(start_dim=1)
         )
     
     def preprocess(self, x):
@@ -139,14 +144,13 @@ class TetrisBodyV2(nn.Module):
     def forward(self, x):
         x = self.preprocess(x)
         x = self.blocks(x)
-        x = torch.flatten(x, 1)
         return x
     
     def feature_size(self):
         with torch.no_grad():
             x = torch.zeros(1, *self.input_shape)
             x = self.preprocess(x)
-            return self.blocks(x).reshape(1, -1).size(1)
+            return self.blocks(x).size(1)
 
     def sample_noise(self):
         pass
