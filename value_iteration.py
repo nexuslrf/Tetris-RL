@@ -1,6 +1,7 @@
 import os
 import time
 import json
+from functools import partial
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 import torch
@@ -10,12 +11,12 @@ from curses import wrapper
 import random
 from torch import nn
 from utils.hyperparameters import Config
-from utils.board_utils import print_observation
-from MaTris.actions import ACTIONS
-from networks.network_bodies import TetrisBodyV2
-from MaTris.gym_matris import MatrisEnv
+from utils.board_utils import penalize_closed_regions, print_observation
+from networks.network_bodies import TetrisBodyV2, TetrisBodyV3
+from MaTris.gym_matris_v2 import MatrisEnv
+from MaTris.gym_matris_v2 import ACTIONS
 from utils.board_utils import penalize_closed_boxes, penalize_hidden_boxes, penalize_hidding_boxes, penalize_higher_boxes, encourage_lower_layers, encourage_shared_edges, encourage_boxex_in_a_line
-
+from utils.board_utils import board_height_score, hidden_boxes_score, hidding_boxes_score, closed_boxes_score, shared_edges_score, boxes_in_a_line_score, board_box_height_score, penalize_closed_regions
 
 
 class ExperienceReplayMemory:
@@ -40,11 +41,52 @@ class ExperienceReplayMemory:
 class ValueNetwork(nn.Module):
     def __init__(self, input_shape, body):
         super(ValueNetwork, self).__init__()
-        self.body = body(input_shape)
-        self.fc = nn.Linear(self.body.feature_size(), 1)
+        self.body = body(input_shape, num_actions=None)
+        in_features = self.body.feature_size()
+        if in_features == 1:
+            self.fc = nn.Sequential()
+        else:
+            self.fc = nn.Linear(in_features, 1)
 
     def forward(self, x):
         return self.fc(self.body(x))
+
+
+class TetrisHeirsticBody(nn.Module):
+    score_functions = [
+        board_height_score, 
+        hidden_boxes_score, 
+        hidding_boxes_score, 
+        closed_boxes_score, 
+        # shared_edges_score, 
+        boxes_in_a_line_score, 
+        # board_box_height_score
+    ]
+    def __init__(self, input_shape):
+        super(TetrisHeirsticBody, self).__init__()
+        self.out_features = len(self.score_functions)
+        self.fc = nn.Linear(in_features=self.out_features, out_features=1)
+
+    def preprocess(self, x):
+        device = x.device
+        bs = x.shape[0]
+        x = x.cpu().numpy().astype(np.int)
+        # assert isinstance(x, np.ndarray)
+        # x.astype(np.int)
+        scores = np.zeros(shape=(bs, self.out_features), dtype=np.int)
+        for i in range(bs):
+            for j in range(self.out_features):
+                scores[i, j] = self.score_functions[j](x[i])
+        return torch.tensor(scores, dtype=torch.float, device=device)
+
+    def forward(self, x):
+        # x = self.preprocess(x)
+        # x = self.fc(x)
+        # x = torch.sum(x, dim=1, keepdim=True)
+        return torch.zeros((x.size(0), 1), dtype=torch.float, device=x.device)
+    
+    def feature_size(self):
+        return self.fc.out_features
 
 
 class Agent(object):
@@ -54,11 +96,12 @@ class Agent(object):
         self.observation_shape = env.observation_space.shape
         self.num_actions = env.action_space.n
         self.memory = ExperienceReplayMemory(capacity=config.EXP_REPLAY_SIZE)
-        self.model = ValueNetwork(self.observation_shape, body=body)
-        self.target_model = ValueNetwork(self.observation_shape, body=body)
+        self.model = ValueNetwork(self.observation_shape, body=body).to(self.device)
+        self.target_model = ValueNetwork(self.observation_shape, body=body).to(self.device)
         self.static_policy = static_policy
         self.episode_rewards = []
         self.losses = []
+        self.rounds = []
 
         self.batch_size = config.BATCH_SIZE
         self.lr = config.LR
@@ -82,12 +125,13 @@ class Agent(object):
             if np.random.random() >= epsilon or self.static_policy:
                 action_value_pairs = []
                 for action in range(self.num_actions):
-                    next_state, reward, done, _ = self.env.peak_step(action)
+                    next_state, reward, done, _ = self.env.peak_step_srdi(action)
                     if not done:
                         next_state = torch.tensor([next_state], device=self.device, dtype=torch.float)
-                        action_value_pairs.append((action, reward + float(self.model(next_state).item())))
+                        action_value_pairs.append((action, reward + float(self.target_model(next_state).item())))
                 if len(action_value_pairs) > 0:
-                    return max(action_value_pairs, key=lambda x:x[1])[0]
+                    action = max(action_value_pairs, key=lambda x:x[1])[0]
+                    return action
                 else:
                     return random.choice(range(self.num_actions))
             else:
@@ -144,6 +188,9 @@ class Agent(object):
         
     def append_loss(self, loss):
         self.losses.append(loss)
+    
+    def append_rounds(self, rounds):
+        self.rounds.append(rounds)
 
     def save(self, dirname):
         os.makedirs(dirname, exist_ok=True)
@@ -151,14 +198,17 @@ class Agent(object):
         torch.save(self.optimizer.state_dict(), os.path.join(dirname, "optimizer.pth"))
         with open(os.path.join(dirname, 'losses.json'), 'w') as f:
             json.dump(self.losses, f)
+        with open(os.path.join(dirname, 'rounds.json'), 'w') as f:
+            json.dump(self.rounds, f)
         with open(os.path.join(dirname, 'episode_rewards.json'), 'w') as f:
             json.dump(self.episode_rewards, f)
 
 # reward_functions = []
 reward_functions = [
-    penalize_closed_boxes,
+    # penalize_closed_boxes,
     penalize_hidden_boxes,
     penalize_hidding_boxes,
+    penalize_closed_regions,
     encourage_shared_edges,
     penalize_higher_boxes,
     encourage_lower_layers,
@@ -174,16 +224,24 @@ def main(stdcsr=None):
             print(s, end=end)
     env = MatrisEnv(no_display=True, real_tick=False, reward_functions=reward_functions)
     config = Config()
-    # config.LEARN_START = 130
-    # config.TRAIN_FREQ = 25
-    # config.TARGET_NET_UPDATE_FREQ = 50
+    # config.MAX_FRAMES = 20
+    config.BATCH_SIZE = 128
+    config.LEARN_START = 200
+    config.TRAIN_FREQ = 10
+    config.TARGET_NET_UPDATE_FREQ = 100
+    config.SAVE_FREQ = 5000
+    config.epsilon_start = 0.0
+    config.epsilon_final = 0.0
     # config.MAX_FRAMES = 200
     # config.BATCH_SIZE = 1
-    agent = Agent(env=env, config=config, body=TetrisBodyV2)
+    body_list = [TetrisBodyV2, TetrisHeirsticBody]
+    agent = Agent(env=env, config=config, body=body_list[0])
 
     episode_reward = 0
+    rounds = 0
     lines = 0
     observation = env.reset()
+    start_time = time.time()
     for frame_idx in range(1, config.MAX_FRAMES + 1):
         env.render()
         epsilon = config.epsilon_by_frame(frame_idx)
@@ -201,22 +259,31 @@ def main(stdcsr=None):
             agent.update_target_network()
 
         episode_reward += reward
+        rounds += 1
         lines = info['lines']
         if done:
             print("done")
 
         print_observation(observation, stdcsr)
-        log(f"T: {frame_idx:5} | Action: {ACTIONS[action][0]:11} | Reward: {reward:7.3f} | Episode reward {episode_reward:7.3f}| Lines: {lines} | Epsilon {epsilon:.3f}", end='\n')
+        log(f"Time: {time.time() - start_time:.0f}")
+        log(f"T: {frame_idx:5}/{config.MAX_FRAMES} | Action: {str(ACTIONS[action]):12} | Reward: {reward:7.3f} | Episode reward {episode_reward:7.3f}| Lines: {lines} | Epsilon {epsilon:.3f}", end='\n')
         log(f'Losses: {agent.losses[-1] if len(agent.losses) > 0 else 0.0:5.2f}')
 
         if done:
             observation = env.reset()
             assert observation is not None
             agent.append_episode_reward(episode_reward)
+            agent.append_rounds(rounds)
             episode_reward = 0
+            rounds = 0
             lines = 0
+        
+        if frame_idx % config.SAVE_FREQ == 0:
+            agent.save(f'./saved_agents/agent_{frame_idx}')
             
-    agent.save('./saved_agent')
+        # time.sleep(1)
+            
+    agent.save('./saved_agents/final')
     env.close()
 
 

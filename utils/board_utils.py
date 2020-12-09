@@ -45,6 +45,30 @@ def num_closed_boxes(state):
     closed = n * m - c.sum() - len(visited)
     return closed
 
+def num_closed_regions(state):
+    c = state[0] + state[2]
+    n, m = c.shape
+    directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+    visited = set()
+    region_cnt = 0
+    for i in range(n):
+        for j in range(m):
+            if (i, j) not in visited:
+                region_cnt += 1
+                queue = [(i, j)]
+                visited.add((i, j))
+                while len(queue) > 0:
+                    u = queue.pop()
+                    for d in directions:
+                        v = (u[0] + d[0], u[1] + d[1])
+                        if v[0] < 0 or v[0] >= n or v[1] < 0 or v[1] >= m:
+                            continue
+                        if c[v] == 0 and v not in visited:
+                            visited.add(v)
+                            queue.append(v)
+    return region_cnt
+
+
 def num_shared_edges(state):
     c, h = state[0], state[2]
     n, m = c.shape
@@ -52,12 +76,11 @@ def num_shared_edges(state):
     cnt = 0
     for i in range(n):
         for j in range(m):
-            if h[i, j] != 0:
+            if c[i, j] != 0:
                 for d in directions:
                     ii, jj = i + d[0], j + d[1]
                     if ii < 0 or ii >= n or jj < 0 or jj >= m:
-                        if ii != -1:
-                            cnt += 1  # shared with boarder
+                        cnt += 1  # shared with boarder
                         continue
                     if c[ii, jj] != 0:
                         cnt += 1
@@ -88,31 +111,40 @@ def board_line_score(state, scores=None):
     c = state[0] + state[2]
     n, m = c.shape
     if scores is None:
-        scores = [i**3/10 for i in range(1, 11)]
+        scores = [0] * 11
+        scores[-1] = 200
+        for i in range(10):
+            scores[i] = i ** 1.5
     score = 0
     for i in range(n):
+        if c[i].sum() > 10:
+            print("HERE")
         score += scores[c[i].sum()]
     return score
     
-def hidden_boxes_score(c, k=-0.1, p=1):
+def hidden_boxes_score(c, k=-0.3, p=1):
     return k * num_hidden_boxes(c) ** p
 
-def hidding_boxes_score(c, k=-0.1, p=1):
+def hidding_boxes_score(c, k=-0.3, p=1):
     return k * num_hidding_boxes(c) ** p
 
-def closed_boxes_score(c, k=-0.1, p=1):
+def closed_boxes_score(c, k=-0.5, p=1):
     return k * num_closed_boxes(c) ** p
 
-def shared_edges_score(c, k=0.2, p=3):
+def closed_regions_score(c, k=-3.0, p=1):
+    return k * num_closed_regions(c) ** p
+
+def shared_edges_score(c, k=0.1, p=1):
     return k * num_shared_edges(c) ** p
 
-def board_height_score(c, k=-0.5, p=1.5):
+def board_height_score(c, k=-1.0, p=1.0):
     return k * board_height(c) ** p
 
 def boxes_in_a_line_score(c, k=0.01, p=3):
-    return board_line_score(c, scores=[k * i ** p for i in range(0, 11)])
+    return board_line_score(c, scores=None)
+    # return board_line_score(c, scores=[k * i ** p for i in range(0, 11)])
 
-def board_box_height_score(c, k=0.001, p=2):
+def board_box_height_score(c, k=0.01, p=1.5):
     return board_box_height(c, scores=[k * d ** p for d in range(c.shape[1])])
 
 # transition
@@ -130,6 +162,11 @@ def penalize_closed_boxes(p, c):
     if c is None: 
         return 0.0
     return closed_boxes_score(c) - closed_boxes_score(p)
+
+def penalize_closed_regions(p, c):
+    if c is None: 
+        return 0.0
+    return closed_regions_score(c) - closed_regions_score(p)
 
 def encourage_shared_edges(p, c):
     if c is None: 
@@ -213,6 +250,7 @@ def print_observation(ob, stdcsr=None):
         'Hidden Boxes': hidden_boxes_score,
         'Hidding Boxes': hidding_boxes_score,
         'Closed Boxes': closed_boxes_score,
+        'Closed Regiones': closed_regions_score,
         'Shared Edges': shared_edges_score,
         'Boxes in a Line': boxes_in_a_line_score,
         'Board Box Height': board_box_height_score,
@@ -222,6 +260,7 @@ def print_observation(ob, stdcsr=None):
         'Hidden Boxes': num_hidden_boxes,
         'Hidding Boxes': num_hidding_boxes,
         'Closed Boxes': num_closed_boxes,
+        'Closed Boxes': num_closed_regions,
         'Shared edges': num_shared_edges
     }
     summary_lines = []

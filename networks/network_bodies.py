@@ -123,21 +123,22 @@ class TetrisBodyV2(nn.Module):
         self.noisy=noisy
 
         self.blocks = nn.Sequential(
-            MultiBranchBlock(in_channels=6, branch_channels=32, kernel_sizes=[(11, 1), (1, 11), (5, 5)], paddings=[(5, 0), (0, 5), (2, 2)]),
-            MultiBranchBlock(in_channels=32, branch_channels=32, kernel_sizes=[(11, 1), (1, 11), (5, 5)], paddings=[(5, 0), (0, 5), (2, 2)]),
-            MultiBranchBlock(in_channels=32, branch_channels=64, kernel_sizes=[(11, 1), (1, 11), (5, 5)], paddings=[(5, 0), (0, 5), (2, 2)]),
-            nn.AdaptiveAvgPool2d(output_size=(12, 6)),
+            MultiBranchBlock(in_channels=2, branch_channels=64, kernel_sizes=[(11, 1), (1, 11), (5, 5)], paddings=[(5, 0), (0, 5), (2, 2)]),
+            # MultiBranchBlock(in_channels=32, branch_channels=64, kernel_sizes=[(11, 1), (1, 11), (5, 5)], paddings=[(5, 0), (0, 5), (2, 2)]),
+            # nn.AdaptiveAvgPool2d(output_size=(12, 6)),
             MultiBranchBlock(in_channels=64, branch_channels=64, kernel_sizes=[(11, 1), (1, 11), (5, 5)], paddings=[(5, 0), (0, 5), (2, 2)]),
             MultiBranchBlock(in_channels=64, branch_channels=64, kernel_sizes=[(11, 1), (1, 11), (5, 5)], paddings=[(5, 0), (0, 5), (2, 2)]),
             nn.AdaptiveAvgPool2d(output_size=(6, 3)),
+            # MultiBranchBlock(in_channels=64, branch_channels=64, kernel_sizes=[(11, 1), (1, 11), (5, 5)], paddings=[(5, 0), (0, 5), (2, 2)]),
             nn.Flatten(start_dim=1)
         )
     
     def preprocess(self, x):
-        x0 = torch.zeros(size=(x.size(0), 3, 23, 12), dtype=torch.float32).to(x.device)
-        x0[:, 0:1] = torch.ones(size=(x.size(0), 1, 23, 12), dtype=torch.float32)
-        x0[:, :, 0:22, 1:11] = x
-        x = x0
+        # x0 = torch.zeros(size=(x.size(0), 3, 23, 12), dtype=torch.float32).to(x.device)
+        # x0[:, 0:1] = torch.ones(size=(x.size(0), 1, 23, 12), dtype=torch.float32)
+        # x0[:, :, 0:22, 1:11] = x
+        # x = x0
+        x = x[:, 0:1]
         x = torch.cat([x, 1.0 - x], dim=1)
         return x
         

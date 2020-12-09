@@ -52,6 +52,7 @@ class Config(object):
         self.LEARN_START = 1000
         self.MAX_FRAMES = 100000
         self.TRAIN_FREQ = 50
+        self.SAVE_FREQ = 10000
 
         #Categorical Params
         self.ATOMS = 51

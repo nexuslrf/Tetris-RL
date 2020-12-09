@@ -61,11 +61,13 @@ class MatrisEnv(gym.Env):
         state = self.game.matris.get_state()
         info = self.game.matris.get_info()
 
+        previous_state[1:] = 0
+        state[1:] = 0
         if self.reward_functions is not None:
             for reward_function in self.reward_functions:
                 reward += reward_function(previous_state, state)
 
-        reward /= 1000
+        reward /= 10
 
         return state, reward, done, info
 
@@ -75,6 +77,26 @@ class MatrisEnv(gym.Env):
         previous_state = self.game.matris.get_state()
         act = generate_action_seq(self.action_list[action_id])
         return self.game.matris.fake_update(act)
+
+    def peak_step_srdi(self, action_id):
+        timepassed = self.game.clock.tick(50) if self.real_tick else 20
+        previous_state = self.game.matris.get_state()
+        self.game.matris.push_state()
+        act = generate_action_seq(self.action_list[action_id])
+        reward = self.game.matris.step_update(act, timepassed/1000)
+        done = self.game.matris.done
+        state = self.game.matris.get_state()
+        info = self.game.matris.get_info()
+        self.game.matris.pop_state()
+
+        previous_state[1:] = 0
+        state[1:] = 0
+        if self.reward_functions:
+            for reward_function in self.reward_functions:
+                reward += reward_function(previous_state, state)
+
+        reward /= 10
+        return state, reward, done, info
 
     def reset(self):
         self.game.gym_init(self.screen)
