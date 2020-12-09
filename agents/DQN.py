@@ -5,7 +5,7 @@ import torch.optim as optim
 
 from agents.BaseAgent import BaseAgent
 from networks.networks import DQN
-from networks.network_bodies import AtariBody, SimpleBody, TetrisBody, TetrisBody_V2
+from networks.network_bodies import AtariBody, SimpleBody, TetrisBody, TetrisBodyV3
 from utils.ReplayMemory import ExperienceReplayMemory, PrioritizedReplayMemory
 
 from timeit import default_timer as timer

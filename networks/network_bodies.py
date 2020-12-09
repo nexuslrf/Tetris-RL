@@ -143,6 +143,10 @@ class TetrisBodyV3(nn.Module):
     def __init__(self, input_shape, num_actions, noisy=False, sigma_init=0.5):
         super(TetrisBodyV3, self).__init__()        
 
+        self.input_shape = input_shape
+        self.num_actions = num_actions
+        self.noisy=noisy
+
         self.conv_layers_square = nn.Sequential(
             nn.Conv2d(self.input_shape[0], 32, kernel_size=5, stride=1, padding=2),
             nn.LeakyReLU(inplace=True),
