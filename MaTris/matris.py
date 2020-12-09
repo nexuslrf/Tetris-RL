@@ -4,11 +4,11 @@ from pygame import Rect, Surface
 import random
 import numpy as np
 import os
-import kezmenu
-from tetrominoes import list_of_tetrominoes, list_of_start_tetrominoes
-from tetrominoes import rotate, tetrominoes
+from MaTris import kezmenu
+from MaTris.tetrominoes import list_of_tetrominoes, list_of_start_tetrominoes
+from MaTris.tetrominoes import rotate, tetrominoes
 
-from scores import load_score, write_score, Score
+from MaTris.scores import load_score, write_score, Score
 
 class GameOver(Exception):
     """Exception used for its control flow properties"""
@@ -58,6 +58,7 @@ INIT_GRID = [
 ]
 
 class Matris(object):
+    state_stack = []
     def __init__(self, screen):
         self.surface = None
         if screen:
@@ -231,7 +232,6 @@ class Matris(object):
                 self.movement_keys['right'] = 1
             elif pressed(pygame.K_LSHIFT) or pressed(pygame.K_RSHIFT):
                 self.swap_held()
-
             elif unpressed(pygame.K_LEFT) or unpressed(pygame.K_a):
                 self.movement_keys['left'] = 0
                 self.movement_keys_timer = (-self.movement_keys_speed)*2
@@ -277,6 +277,7 @@ class Matris(object):
         """
         One step update
         """
+        assert self.matrix is not None
         pre_score = self.score
         self.needs_redraw = False
         sonic_drop = False
@@ -330,6 +331,73 @@ class Matris(object):
             self.update_matrix()
 
         return self.score - pre_score
+
+    def push_state(self):
+        items = (
+            self.tetromino_rotation, 
+            self.tetromino_position, 
+            self.next_tetromino,
+            self.next_tetromino_bag.copy(),
+            self.next_tetromino_idx,
+            self.drop_trials,
+            self.done,
+            self.downwards_timer,
+            self.movement_keys_timer,
+            self.matrix.copy(), 
+            self.level,
+            self.score, 
+            self.lines, 
+            self.combo,
+            self.locked,
+            self.paused,
+            self.needs_redraw
+        )
+        self.state_stack.append(items)
+
+
+    def pop_state(self):
+        items = self.state_stack.pop()
+        (
+            self.tetromino_rotation, 
+            self.tetromino_position, 
+            self.next_tetromino,
+            self.next_tetromino_bag,
+            self.next_tetromino_idx,
+            self.drop_trials,
+            self.done,
+            self.downwards_timer,
+            self.movement_keys_timer,
+            self.matrix, 
+            self.level,
+            self.score, 
+            self.lines, 
+            self.combo,
+            self.locked,
+            self.paused,
+            self.needs_redraw
+        ) = items
+        
+
+    def fake_update(self, actions):
+        """
+        One step update
+        """
+        self.push_state()
+        self.step_update(actions, timepassed=0)
+        # Try to get 4 parameters
+        board = self.matrix[0].copy()
+        board[board>0] = 1
+        heights = (board.shape[0] - board.argmax(0))
+        heights[heights==board.shape[0]] = 0
+        sum_height = heights.sum()
+        height_diff = [heights[i+1] - heights[i] for i in range(len(heights)-1)]
+        sum_diff = np.sum(np.abs(height_diff))
+        max_height = heights.max()
+        num_holes = max_height * board.shape[1] - board.sum()
+
+        self.pop_state()
+        return sum_height, sum_diff, max_height, num_holes # reward
+
 
     def update_matrix(self):
         if not self.done:
@@ -544,7 +612,7 @@ class Matris(object):
 
         return border
 
-    def lock_tetromino(self):
+    def lock_tetromino(self, set_next=True):
         """
         This method is called whenever the falling tetromino "dies". `self.matrix` is updated,
         the lines are counted and cleared, and a new tetromino is chosen.
@@ -580,7 +648,10 @@ class Matris(object):
                 self.linescleared_sound.play()
             print("Wow: " + score_type + "!")
 
-        self.score = self.score + (b2b * Score.score_table[score_type] + (self.combo - 1) * 50) * self.level
+        if score_type in Score.score_list:
+            self.score = self.score + (b2b * Score.score_table[score_type] + (self.combo - 1) * 50) * self.level
+
+        self.combo = self.combo + 1 if score_type in Score.score_list else 1
 
         if not self.played_highscorebeaten_sound and self.score > self.highscore:
             if self.highscore != 0:
@@ -591,9 +662,10 @@ class Matris(object):
             self.levelup_sound.play()
             self.level += 1
 
-        self.combo = self.combo + 1 if score_type in Score.score_list else 1
-
-        self.set_tetrominoes()
+        if set_next:
+            self.set_tetrominoes()
+        else:
+            self.tetromino_position = (0,4)
 
         if  self.matrix[0,:2,:].sum()>0 or self.blend() is None:
             self.gameover_sound.play()
@@ -690,6 +762,8 @@ class Matris(object):
         return None
 
     def get_state(self):
+        if self.matrix is None:
+            return None
         board = self.matrix.copy()
         board[board>0] = 1
         # combine 3 channels into one
