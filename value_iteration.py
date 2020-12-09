@@ -16,8 +16,8 @@ from networks.network_bodies import TetrisBodyV2, TetrisBodyV3
 from MaTris.gym_matris_v2 import MatrisEnv
 from MaTris.gym_matris_v2 import ACTIONS
 from utils.board_utils import penalize_closed_boxes, penalize_hidden_boxes, penalize_hidding_boxes, penalize_higher_boxes, encourage_lower_layers, encourage_shared_edges, encourage_boxex_in_a_line
-from utils.board_utils import board_height_score, hidden_boxes_score, hidding_boxes_score, closed_boxes_score, shared_edges_score, boxes_in_a_line_score, board_box_height_score, penalize_closed_regions
-
+from utils.board_utils import board_height_score, hidden_boxes_score, hidding_boxes_score, closed_boxes_score, shared_edges_score, boxes_in_a_line_score, board_box_height_score
+from utils.board_utils import penalize_ave_height, penalize_quadratic_uneveness
 
 class ExperienceReplayMemory:
     def __init__(self, capacity):
@@ -223,7 +223,9 @@ reward_functions = [
     encourage_shared_edges,
     penalize_higher_boxes,
     encourage_lower_layers,
-    encourage_boxex_in_a_line
+    encourage_boxex_in_a_line,
+    penalize_ave_height,
+    penalize_quadratic_uneveness
 ]
 
 def main(stdcsr=None):
@@ -300,7 +302,7 @@ def main(stdcsr=None):
 
 
 if __name__ == '__main__':
-    use_text_gui = True
+    use_text_gui = False
     if use_text_gui:
         wrapper(main)
     else:

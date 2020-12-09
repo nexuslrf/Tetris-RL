@@ -107,6 +107,25 @@ def board_box_height(state, scores=None):
                 score += scores[i]
     return score
 
+def board_ave_height(state):
+    c = state[0] + state[2]
+    n, m = c.shape
+    r = np.ones(m)*(-1)
+    for i in range(n):
+        for j in range(m):
+            if c[i, j] != 0 and r[j] == -1:
+                r[j] = n - i
+    return np.mean(r)
+
+def board_quadratic_uneveness(state):
+    c = state[0] + state[2]
+    n, m = c.shape
+    d = np.zeros(m-1)
+    for j in range(m-1):
+        for i in range(n):
+            d[j] = d[j] + abs(c[i,j]-c[i,j+1])
+    return np.sum(np.square(d))
+
 def board_line_score(state, scores=None):
     c = state[0] + state[2]
     n, m = c.shape
@@ -129,7 +148,7 @@ def hidding_boxes_score(c, k=-0.3, p=1):
 def closed_boxes_score(c, k=-0.5, p=1):
     return k * num_closed_boxes(c) ** p
 
-def closed_regions_score(c, k=-3.0, p=1):
+def closed_regions_score(c, k=-2.0, p=1):
     return k * num_closed_regions(c) ** p
 
 def shared_edges_score(c, k=0.1, p=1):
@@ -145,7 +164,23 @@ def boxes_in_a_line_score(c, k=0.01, p=3):
 def board_box_height_score(c, k=0.01, p=1.5):
     return board_box_height(c, scores=[k * d ** p for d in range(c.shape[1])])
 
+def board_ave_height_score(c, k=-1.0, p=1.0):
+    return k * board_ave_height(c) ** p
+
+def board_quadratic_uneveness_score(c, k=-1.5, p=1.0):
+    return k * board_quadratic_uneveness(c) ** p
+
 # transition
+def penalize_ave_height(p, c):
+    if c is None: 
+        return 0.0
+    return board_ave_height_score(c) - board_ave_height_score(p)
+
+def penalize_quadratic_uneveness(p, c):
+    if c is None: 
+        return 0.0
+    return board_quadratic_uneveness_score(c) - board_quadratic_uneveness_score(p)
+
 def penalize_hidden_boxes(p, c):
     if c is None: 
         return 0.0
@@ -252,6 +287,8 @@ def print_observation(ob, stdcsr=None):
         'Shared Edges': shared_edges_score,
         'Boxes in a Line': boxes_in_a_line_score,
         'Board Box Height': board_box_height_score,
+        'Average Height': board_ave_height_score,
+        'Quadratic Uneveness': board_quadratic_uneveness_score
     }
     count_functions = {
         'Height': board_height,
@@ -259,7 +296,9 @@ def print_observation(ob, stdcsr=None):
         'Hidding Boxes': num_hidding_boxes,
         'Closed Boxes': num_closed_boxes,
         'Closed Boxes': num_closed_regions,
-        'Shared edges': num_shared_edges
+        'Shared edges': num_shared_edges,
+        'Average Height': board_ave_height,
+        'Quadratic Uneveness': board_quadratic_uneveness
     }
     summary_lines = []
     summary_lines.append(f'{"Counter":>20}:')
