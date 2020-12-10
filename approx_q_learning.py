@@ -60,12 +60,13 @@ next_simple_state = get_simple_state(next_state)
 # weight = np.ones(curr_simple_state.shape) * -100 #* 10 + 5
 weight = np.array([-5,-5,-5,-30])
 
-epsilon = 0.4
+epsilon = 0
 epsilon_final = 0.01
 epsilon_decay = 0.01
 
+
 lines = 0
-ref_height = 0
+weight_update = False
 
 for f in range(10000):
     if epsilon > epsilon_final:
@@ -88,12 +89,13 @@ for f in range(10000):
     curr_simple_state = next_simple_state
 
     # weight update
-    _, max_next_simple_state = max_q_action(env, weight)
-    target = reward + gamma * (max_next_simple_state*weight).sum()
-    diff =  target - (curr_simple_state*weight).sum()
-    weight = weight + alpha * diff * curr_simple_state
+    if weight_update:
+        _, max_next_simple_state = max_q_action(env, weight)
+        target = reward + gamma * (max_next_simple_state*weight).sum()
+        diff =  target - (curr_simple_state*weight).sum()
+        weight = weight + alpha * diff * curr_simple_state
 
-    print(f"T: {f} | Reward: {reward} |")
+    print(f"T: {f} | Reward: {reward} | W: {weight}")
 
     if done:
         env.reset()
