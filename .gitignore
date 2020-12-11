@@ -2,3 +2,4 @@ saved_agents
 *.pyc
 .vscode/
 train_rl_rf.py
+*.dump
