@@ -6,6 +6,7 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 import torch
 from torch import optim
+from torch.utils.tensorboard import SummaryWriter
 import numpy as np
 from curses import wrapper
 import random
@@ -16,8 +17,9 @@ from networks.network_bodies import TetrisBodyV2, TetrisBodyV3
 from MaTris.gym_matris_v2 import MatrisEnv
 from MaTris.gym_matris_v2 import ACTIONS
 from utils.board_utils import penalize_closed_boxes, penalize_hidden_boxes, penalize_hidding_boxes, penalize_higher_boxes, encourage_lower_layers, encourage_shared_edges, encourage_boxex_in_a_line
-from utils.board_utils import board_height_score, hidden_boxes_score, hidding_boxes_score, closed_boxes_score, shared_edges_score, boxes_in_a_line_score, board_box_height_score
 from utils.board_utils import penalize_ave_height, penalize_quadratic_uneveness
+
+writer = SummaryWriter()
 
 class ExperienceReplayMemory:
     def __init__(self, capacity):
@@ -52,43 +54,6 @@ class ValueNetwork(nn.Module):
         return self.fc(self.body(x))
 
 
-class TetrisHeirsticBody(nn.Module):
-    score_functions = [
-        board_height_score, 
-        hidden_boxes_score, 
-        hidding_boxes_score, 
-        closed_boxes_score, 
-        # shared_edges_score, 
-        boxes_in_a_line_score, 
-        # board_box_height_score
-    ]
-    def __init__(self, input_shape):
-        super(TetrisHeirsticBody, self).__init__()
-        self.out_features = len(self.score_functions)
-        self.fc = nn.Linear(in_features=self.out_features, out_features=1)
-
-    def preprocess(self, x):
-        device = x.device
-        bs = x.shape[0]
-        x = x.cpu().numpy().astype(np.int)
-        # assert isinstance(x, np.ndarray)
-        # x.astype(np.int)
-        scores = np.zeros(shape=(bs, self.out_features), dtype=np.int)
-        for i in range(bs):
-            for j in range(self.out_features):
-                scores[i, j] = self.score_functions[j](x[i])
-        return torch.tensor(scores, dtype=torch.float, device=device)
-
-    def forward(self, x):
-        # x = self.preprocess(x)
-        # x = self.fc(x)
-        # x = torch.sum(x, dim=1, keepdim=True)
-        return torch.zeros((x.size(0), 1), dtype=torch.float, device=x.device)
-    
-    def feature_size(self):
-        return self.fc.out_features
-
-
 class Agent(object):
     def __init__(self, env=None, config=None, body=TetrisBodyV2, static_policy=False, use_target=True, use_data_parallel=True):
         self.env: MatrisEnv = env
@@ -117,34 +82,13 @@ class Agent(object):
             if use_data_parallel:
                 self.target_model = nn.DataParallel(self.model)
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
-
-        # if self.static_policy:
-        #     self.model.eval()
-        #     self.target_model.eval()
-        # else:
-        #     self.model.train()
-        #     self.target_model.eval()
     
     def get_action(self, epsilon):
         target_model = self.target_model if self.use_target else self.model
         with torch.no_grad():
             self.model.eval()
             target_model.eval()
-            # assert np.allclose(observation, self.env.game.matris.get_state())
             if np.random.random() >= epsilon or self.static_policy:
-                # next_states = []
-                # rewards = []
-                # for action in range(self.num_actions):
-                #     next_state, reward, done, _ = self.env.peak_step_srdi(action)
-                #     if not done:
-                #         next_states.append(torch.tensor([next_state], device=self.device, dtype=torch.float))
-                #         rewards.append(torch.tensor([reward], device=self.device, dtype=torch.float))
-                #     else:
-                #         rewards.append(torch.tensor([reward], device=self.device, dtype=torch.float))
-                #         next_states.append(torch.zeros_like(torch.tensor([observation]), device=self.device, dtype=torch.float))
-                # next_states = torch.cat(next_states, dim=0)
-                # rewards = torch.cat(rewards, dim=0).unsqueeze(1)
-                # expected_values = rewards + target_model(next_states)
                 batch_next_state, batch_reward, batch_done, batch_info = zip(*self.env.peak_actions())
                 expected_values = torch.tensor(batch_reward, dtype=torch.float, device=self.device)
                 if not all(batch_done):
@@ -200,6 +144,7 @@ class Agent(object):
         #     param.grad.data.clamp_(-1, 1)
         self.optimizer.step()
         self.append_loss(step, loss.item())
+        writer.add_scalar('loss', loss.item(), step)
     
     def update_target_network(self):
         if self.use_target:
@@ -261,19 +206,16 @@ def main(stdcsr=None):
             stdcsr.refresh()
     env = MatrisEnv(no_display=True, real_tick=False, reward_functions=reward_functions)
     config = Config()
-    # config.MAX_FRAMES = 20
     config.EXP_REPLAY_SIZE = 50000
-    config.BATCH_SIZE = 2048
-    config.LEARN_START = 2048
+    config.BATCH_SIZE = 128
+    config.LEARN_START = config.BATCH_SIZE
     config.TRAIN_FREQ = 1
     config.TARGET_NET_UPDATE_FREQ = 100
     config.SAVE_FREQ = 100
     config.LR = 2e-3
     config.epsilon_start = 0.0
     config.epsilon_final = 0.0
-    # config.MAX_FRAMES = 200
-    # config.BATCH_SIZE = 1
-    body_list = [TetrisBodyV2, TetrisHeirsticBody]
+    body_list = [TetrisBodyV2]
     agent = Agent(env=env, config=config, body=body_list[0], use_target=False)
 
     episode_reward = 0
@@ -300,6 +242,7 @@ def main(stdcsr=None):
         episode_reward += reward
         rounds += 1
         lines = info['lines']
+        score = info['score']
         if done:
             print("done")
 
@@ -312,12 +255,23 @@ def main(stdcsr=None):
             len(agent.lines), rounds, episode_reward, lines, agent.losses[-1][1] if len(agent.losses) > 0 else 0.0, epsilon))
         refresh()
 
+        writer.add_scalars('state_values', {
+            'state_value': current_value,
+            'next_state_value': next_value,
+            'reward': reward,
+        }, frame_idx)
+
         if done:
             observation = env.reset()
             assert observation is not None
             agent.append_episode_reward(frame_idx, episode_reward)
             agent.append_rounds(frame_idx, rounds)
             agent.append_lines(frame_idx, lines)
+            game = len(agent.lines)
+            writer.add_scalar('game/rounds', rounds, game)
+            writer.add_scalar('game/scores', score, game)
+            writer.add_scalar('game/cleared_lines', lines, game)
+            writer.add_scalar('game/episode_reward', episode_reward, game)
             episode_reward = 0
             rounds = 0
             lines = 0
