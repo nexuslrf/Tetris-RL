@@ -4,7 +4,7 @@ import gym
 from gym import error, spaces, utils
 from gym.utils import seeding
 
-from multiprocessing import Pool
+from multiprocessing import Pool, cpu_count
 
 this_dir = os.path.dirname(__file__)
 # Add lib to PYTHONPATH
@@ -12,7 +12,7 @@ lib_path = os.path.join(this_dir)
 if lib_path not in sys.path:
     sys.path.insert(0, lib_path)
 
-from matris import *
+from MaTris.matris import *
 import numpy as np
 import itertools
 import copy
@@ -37,9 +37,31 @@ def generate_action_seq(act):
     act_list.append('hard drop')
     return act_list
 
+def step_func_wrapper(args):
+    matris, action_id, reward_functions = args
+    return step_func(matris, action_id, 20, reward_functions)
+
+def step_func(matris: MatrisCore, action_id, timepassed, reward_functions=None):
+    previous_state = matris.get_state()
+    act = generate_action_seq(ACTIONS[action_id])
+    reward = matris.step_update(act, timepassed/1000, set_next=True)
+    done = matris.done
+    state = matris.get_state()
+    info = matris.get_info()
+
+    previous_state[1:] = 0
+    state[1:] = 0
+    if reward_functions:
+        for reward_function in reward_functions:
+            reward += reward_function(previous_state, state)
+
+    reward /= 10
+    return state, reward, done, info
+
 class MatrisEnv(gym.Env):
     metadata = {'render.modes': ['human']}
     action_list = ACTIONS
+    pools = Pool(cpu_count())
 
     def __init__(self, no_display=True, real_tick=False, reward_functions=None, mp_pool=0):
         if not no_display:
@@ -57,47 +79,26 @@ class MatrisEnv(gym.Env):
         self.action_space = spaces.Discrete(len(ACTIONS))
         self.observation_space = spaces.Box(low=0, high=1, shape=(3,22,10), dtype=np.int)
         self.mp_pool = mp_pool
-
+    
     def step(self, action_id):
         self.game.matris.drop_bonus = False
         timepassed = self.game.clock.tick(50) if self.real_tick else 20
-        previous_state = self.game.matris.get_state()
-        act = generate_action_seq(self.action_list[action_id])
-        reward = self.game.matris.step_update(act, timepassed/1000)
-        done = self.game.matris.done
-        state = self.game.matris.get_state()
-        info = self.game.matris.get_info()
-
-        previous_state[1:] = 0
-        state[1:] = 0
-        if self.reward_functions is not None:
-            for reward_function in self.reward_functions:
-                reward += reward_function(previous_state, state)
-
-        reward /= 10
-
-        return state, reward, done, info
+        return step_func(self.game.matris, action_id, timepassed, self.reward_functions)
 
     def peak_step_srdi(self, action_id):
         timepassed = self.game.clock.tick(50) if self.real_tick else 20
-        previous_state = self.game.matris.get_state()
         self.game.matris.push_state()
-        act = generate_action_seq(self.action_list[action_id])
-        reward = self.game.matris.step_update(act, timepassed/1000, set_next=False)
-        done = self.game.matris.done
-        state = self.game.matris.get_state()
-        info = self.game.matris.get_info()
+        ret = step_func(self.game.matris, action_id, timepassed, self.reward_functions)
         self.game.matris.pop_state()
-
-        previous_state[1:] = 0
-        state[1:] = 0
-        if self.reward_functions:
-            for reward_function in self.reward_functions:
-                reward += reward_function(previous_state, state)
-
-        reward /= 10
-        return state, reward, done, info
-
+        return ret
+    
+    def peak_actions(self, action_id_list=None):
+        if action_id_list is None:
+            action_id_list = list(range(self.action_space.n))
+        self.game.matris.push_state()
+        ret = MatrisEnv.pools.map(step_func_wrapper, [(copy.deepcopy(self.game.matris), action_id, self.reward_functions) for action_id in action_id_list])
+        self.game.matris.pop_state()
+        return ret
 
     def peek(args):
         mat, action_id, reward_functions = args
@@ -129,8 +130,6 @@ class MatrisEnv(gym.Env):
 
         return ret_lst
         
-
-
     def reset(self):
         self.game.gym_init(self.screen)
         return self.game.matris.get_state()

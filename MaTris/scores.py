@@ -41,6 +41,9 @@ def write_score(score):
     """
     Writes score to file.
     """
-    assert str(score).isdigit()
-    with open(scorefile, 'a') as file:
-        file.write("{}\n".format(score))
+    try:
+        assert str(score).isdigit()
+        with open(scorefile, 'a') as file:
+            file.write("{}\n".format(score))
+    except:
+        pass

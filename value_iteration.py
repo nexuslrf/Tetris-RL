@@ -90,14 +90,16 @@ class TetrisHeirsticBody(nn.Module):
 
 
 class Agent(object):
-    def __init__(self, env=None, config=None, body=TetrisBodyV2, static_policy=False):
-        self.env = env
+    def __init__(self, env=None, config=None, body=TetrisBodyV2, static_policy=False, use_target=True, use_data_parallel=True):
+        self.env: MatrisEnv = env
         self.device = config.device
         self.observation_shape = env.observation_space.shape
         self.num_actions = env.action_space.n
+        self.use_data_parallel = use_data_parallel
         self.memory = ExperienceReplayMemory(capacity=config.EXP_REPLAY_SIZE)
         self.model = ValueNetwork(self.observation_shape, body=body).to(self.device)
-        self.target_model = ValueNetwork(self.observation_shape, body=body).to(self.device)
+        if use_data_parallel:
+            self.model = nn.DataParallel(self.model)
         self.static_policy = static_policy
         self.episode_rewards = []
         self.losses = []
@@ -107,42 +109,54 @@ class Agent(object):
         self.batch_size = config.BATCH_SIZE
         self.lr = config.LR
         self.gamma = config.GAMMA
+        self.use_target = use_target
 
-
-        self.target_model.load_state_dict(self.model.state_dict())
+        if use_target:
+            self.target_model = ValueNetwork(self.observation_shape, body=body).to(self.device)
+            self.target_model.load_state_dict(self.model.state_dict())
+            if use_data_parallel:
+                self.target_model = nn.DataParallel(self.model)
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
 
-        if self.static_policy:
-            self.model.eval()
-            self.target_model.eval()
-        else:
-            self.model.train()
-            self.target_model.eval()
+        # if self.static_policy:
+        #     self.model.eval()
+        #     self.target_model.eval()
+        # else:
+        #     self.model.train()
+        #     self.target_model.eval()
     
-    def get_action(self, observation, epsilon):
+    def get_action(self, epsilon):
+        target_model = self.target_model if self.use_target else self.model
         with torch.no_grad():
             self.model.eval()
+            target_model.eval()
             # assert np.allclose(observation, self.env.game.matris.get_state())
             if np.random.random() >= epsilon or self.static_policy:
-                action_value_pairs = []
-                next_states = []
-                rewards = []
-                for action in range(self.num_actions):
-                    next_state, reward, done, _ = self.env.peak_step_srdi(action)
-                    if not done:
-                        next_states.append(torch.tensor([next_state], device=self.device, dtype=torch.float))
-                        rewards.append(torch.tensor([reward], device=self.device, dtype=torch.float))
-                    else:
-                        rewards.append(torch.tensor([reward], device=self.device, dtype=torch.float))
-                        next_states.append(torch.zeros_like(torch.tensor([observation]), device=self.device, dtype=torch.float))
-                next_states = torch.cat(next_states, dim=0)
-                rewards = torch.cat(rewards, dim=0).unsqueeze(1)
-                expected_values = rewards + self.target_model(next_states)
+                # next_states = []
+                # rewards = []
+                # for action in range(self.num_actions):
+                #     next_state, reward, done, _ = self.env.peak_step_srdi(action)
+                #     if not done:
+                #         next_states.append(torch.tensor([next_state], device=self.device, dtype=torch.float))
+                #         rewards.append(torch.tensor([reward], device=self.device, dtype=torch.float))
+                #     else:
+                #         rewards.append(torch.tensor([reward], device=self.device, dtype=torch.float))
+                #         next_states.append(torch.zeros_like(torch.tensor([observation]), device=self.device, dtype=torch.float))
+                # next_states = torch.cat(next_states, dim=0)
+                # rewards = torch.cat(rewards, dim=0).unsqueeze(1)
+                # expected_values = rewards + target_model(next_states)
+                batch_next_state, batch_reward, batch_done, batch_info = zip(*self.env.peak_actions())
+                expected_values = torch.tensor(batch_reward, dtype=torch.float, device=self.device)
+                if not all(batch_done):
+                    valid_next_state = [state for done, state in zip(batch_done, batch_next_state) if not done]
+                    batch_done = torch.tensor(batch_done, dtype=torch.bool)
+                    batch_next_state = torch.tensor(valid_next_state, dtype=torch.float, device=self.device)
+                    expected_values[~batch_done] += target_model(batch_next_state).squeeze()
                 action = torch.argmax(expected_values, dim=0).squeeze().item()
                 return action
             else:
                 return np.random.randint(0, self.num_actions)
-
+    
     def append_to_replay(self, prev_observation, action, reward, observation):
         self.memory.push((prev_observation, action, reward, observation))
 
@@ -170,9 +184,10 @@ class Agent(object):
         current_v_values = self.model(batch_state)
 
         with torch.no_grad():
+            target_model = self.target_model if self.use_target else self.model
             target_state_values = torch.zeros(self.batch_size, device=self.device, dtype=torch.float).unsqueeze(dim=1)
             if not empty_next_state_values:
-                target_state_values[non_final_mask] = self.target_model(non_final_next_states)
+                target_state_values[non_final_mask] = target_model(non_final_next_states)
             expected_v_values = batch_reward + (self.gamma * target_state_values)
         
         diff = (expected_v_values - current_v_values)
@@ -181,16 +196,24 @@ class Agent(object):
         # Optimize the model
         self.optimizer.zero_grad()
         loss.backward()
-        for param in self.model.parameters():
-            param.grad.data.clamp_(-1, 1)
+        # for param in self.model.parameters():
+        #     param.grad.data.clamp_(-1, 1)
         self.optimizer.step()
         self.append_loss(step, loss.item())
     
     def update_target_network(self):
-        self.target_model.load_state_dict(self.model.state_dict())
+        if self.use_target:
+            self.target_model.load_state_dict(self.model.state_dict())
 
     def append_episode_reward(self, step, reward):
         self.episode_rewards.append((step, reward))
+    
+    def observation_value(self, observation):
+        if observation is None:
+            return 0.0
+        with torch.no_grad():
+            self.model.eval()
+            return self.model(torch.tensor([observation], dtype=torch.float, device=self.device)).squeeze().item()
         
     def append_loss(self, step, loss):
         self.losses.append((step, loss))
@@ -204,15 +227,14 @@ class Agent(object):
     def save(self, dirname):
         os.makedirs(dirname, exist_ok=True)
         torch.save(self.model.state_dict(), os.path.join(dirname, "model.pth"))
+        if self.use_target:
+            torch.save(self.target_model.state_dict(), os.path.join(dirname, "target_model.pth"))
         torch.save(self.optimizer.state_dict(), os.path.join(dirname, "optimizer.pth"))
-        with open(os.path.join(dirname, 'losses.json'), 'w') as f:
-            json.dump(self.losses, f)
-        with open(os.path.join(dirname, 'rounds.json'), 'w') as f:
-            json.dump(self.rounds, f)
-        with open(os.path.join(dirname, 'lines.json'), 'w') as f:
-            json.dump(self.lines, f)
-        with open(os.path.join(dirname, 'episode_rewards.json'), 'w') as f:
-            json.dump(self.episode_rewards, f)
+        for name, data in zip(['losses', 'rounds', 'lines', 'episode_rewards'], [self.losses, self.rounds, self.lines, self.episode_rewards]):
+            with open(os.path.join(dirname, f'{name}.json'), 'w') as f:
+                json.dump(data, f)
+            with open(os.path.join(dirname, f'{name}.txt'), 'w') as f:
+                f.write("\n".join(" ".join(str(v) for v in l) for l in data))
 
 # reward_functions = []
 reward_functions = [
@@ -220,7 +242,7 @@ reward_functions = [
     penalize_hidden_boxes,
     penalize_hidding_boxes,
     penalize_closed_regions,
-    encourage_shared_edges,
+    # encourage_shared_edges,
     penalize_higher_boxes,
     encourage_lower_layers,
     encourage_boxex_in_a_line,
@@ -232,23 +254,27 @@ def main(stdcsr=None):
     def log(s, end="\n"):
         if stdcsr:
             stdcsr.addstr(s + end)
-            stdcsr.refresh()
         else:
             print(s, end=end)
+    def refresh():
+        if stdcsr:
+            stdcsr.refresh()
     env = MatrisEnv(no_display=True, real_tick=False, reward_functions=reward_functions)
     config = Config()
     # config.MAX_FRAMES = 20
-    config.BATCH_SIZE = 128
-    config.LEARN_START = 200
-    config.TRAIN_FREQ = 10
+    config.EXP_REPLAY_SIZE = 50000
+    config.BATCH_SIZE = 2048
+    config.LEARN_START = 2048
+    config.TRAIN_FREQ = 1
     config.TARGET_NET_UPDATE_FREQ = 100
     config.SAVE_FREQ = 100
+    config.LR = 2e-3
     config.epsilon_start = 0.0
     config.epsilon_final = 0.0
     # config.MAX_FRAMES = 200
     # config.BATCH_SIZE = 1
     body_list = [TetrisBodyV2, TetrisHeirsticBody]
-    agent = Agent(env=env, config=config, body=body_list[0])
+    agent = Agent(env=env, config=config, body=body_list[0], use_target=False)
 
     episode_reward = 0
     rounds = 0
@@ -259,7 +285,7 @@ def main(stdcsr=None):
         env.render()
         epsilon = config.epsilon_by_frame(frame_idx)
 
-        action = agent.get_action(observation, epsilon)
+        action = agent.get_action(epsilon)
         prev_observation=observation
         observation, reward, done, info = env.step(action)
         observation = None if done else observation
@@ -267,7 +293,7 @@ def main(stdcsr=None):
         agent.append_to_replay(prev_observation, action, reward, observation)
         if frame_idx >= config.LEARN_START and frame_idx % config.TRAIN_FREQ == 0:
             agent.update(frame_idx)
-        
+
         if frame_idx >= config.LEARN_START and frame_idx % config.TARGET_NET_UPDATE_FREQ == 0:
             agent.update_target_network()
 
@@ -278,9 +304,13 @@ def main(stdcsr=None):
             print("done")
 
         print_observation(observation, stdcsr)
-        log(f"Time: {time.time() - start_time:.0f}")
-        log(f"T: {frame_idx:5}/{config.MAX_FRAMES} | Action: {str(ACTIONS[action]):12} | Reward: {reward:7.3f} | Episode reward {episode_reward:7.3f}| Lines: {lines} | Epsilon {epsilon:.3f}", end='\n')
-        log(f'Losses: {agent.losses[-1][1] if len(agent.losses) > 0 else 0.0:5.2f}')
+        current_value = agent.observation_value(prev_observation)
+        next_value = agent.observation_value(observation)
+        log("[{:5}/{} {:.0f} secs] State value: {:<5.1f}  Target value: {:<5.1f} ({:=5.1f} + {:=5.1f})  Action: {:<2}".format(
+            frame_idx, config.MAX_FRAMES, time.time() - start_time, current_value, next_value+reward, reward, next_value, action))
+        log("Rounds: {:<4}  Episode reward: {:<5.1f}  Cleared lines: {:<4}  Loss: {:<.1f}  Epsilon: {:<.3f}".format(
+            rounds, episode_reward, lines, agent.losses[-1][1] if len(agent.losses) > 0 else 0.0, epsilon))
+        refresh()
 
         if done:
             observation = env.reset()
@@ -295,14 +325,12 @@ def main(stdcsr=None):
         if frame_idx % config.SAVE_FREQ == 0:
             agent.save(f'./saved_agents/agent_{frame_idx}')
             
-        # time.sleep(1)
-            
     agent.save('./saved_agents/final')
     env.close()
 
 
 if __name__ == '__main__':
-    use_text_gui = False
+    use_text_gui = True
     if use_text_gui:
         wrapper(main)
     else:

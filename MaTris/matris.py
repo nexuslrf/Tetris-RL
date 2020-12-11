@@ -59,7 +59,6 @@ INIT_GRID = [
 ]
 
 class MatrisCore(object):
-    state_stack = []
     def __init__(self):
         self.color_map = {
             "blue": 1,"yellow": 2,"pink": 3,"green": 4,
@@ -68,6 +67,8 @@ class MatrisCore(object):
         self.colors = ["none","blue","yellow","pink","green","red","cyan","orange","grey"]
 
         X, O = 'X', None
+
+        self.state_stack = []  # move it into __init__ from class varable to avoid race condition
 
         self.tetrominoes = {
             "I": ("blue",
@@ -150,11 +151,6 @@ class MatrisCore(object):
 
         self.highscore = load_score()
         self.played_highscorebeaten_sound = False
-
-        self.levelup_sound  = get_sound("levelup.wav")
-        self.gameover_sound = get_sound("gameover.wav")
-        self.linescleared_sound = get_sound("linecleared.wav")
-        self.highscorebeaten_sound = get_sound("highscorebeaten.wav")
 
 
     def set_tetrominoes(self):
@@ -613,7 +609,7 @@ class MatrisCore(object):
         if tmp is not None:
             self.matrix = tmp
         else:
-            self.gameover_sound.play()
+            # self.gameover_sound.play()
             self.done = True
             self.gameover()
             return
@@ -634,7 +630,8 @@ class MatrisCore(object):
 
         if self.difficult_clear:
             if lines_cleared >= 4:
-                self.linescleared_sound.play()
+                pass
+                # self.linescleared_sound.play()
             print("Wow: " + score_type + "!")
 
         if score_type in Score.score_list:
@@ -644,11 +641,12 @@ class MatrisCore(object):
 
         if not self.played_highscorebeaten_sound and self.score > self.highscore:
             if self.highscore != 0:
-                self.highscorebeaten_sound.play()
+                pass
+                # self.highscorebeaten_sound.play()
             self.played_highscorebeaten_sound = True
 
         if self.level < MAX_LEVEL and self.lines >= self.level*10:
-            self.levelup_sound.play()
+            # self.levelup_sound.play()
             self.level += 1
 
         if set_next:
@@ -658,7 +656,7 @@ class MatrisCore(object):
             self.locked = False
 
         if  self.matrix[0,:2,:].sum()>0 or self.blend() is None:
-            self.gameover_sound.play()
+            # self.gameover_sound.play()
             self.done = True
             self.gameover()
             
@@ -759,6 +757,11 @@ class Matris(MatrisCore):
     def __init__(self, screen):
         super().__init__()
         self.surface = None
+
+        # self.levelup_sound  = get_sound("levelup.wav")
+        # self.gameover_sound = get_sound("gameover.wav")
+        # self.linescleared_sound = get_sound("linecleared.wav")
+        # self.highscorebeaten_sound = get_sound("highscorebeaten.wav")
         if screen:
             self.surface = screen.subsurface(Rect((MATRIS_OFFSET+BORDERWIDTH, MATRIS_OFFSET+BORDERWIDTH),
                                               (MATRIX_WIDTH * BLOCKSIZE, (MATRIX_HEIGHT-2) * BLOCKSIZE)))

@@ -134,9 +134,9 @@ def board_line_score(state, scores=None):
     c = c.astype(np.int)
     n, m = c.shape
     if scores is None:
-        scores = [0] * 11
+        scores = [0] * (m + 1)
         scores[-1] = 200
-        for i in range(10):
+        for i in range(m):
             scores[i] = i ** 1.5
     score = 0
     for i in range(n):
@@ -242,9 +242,10 @@ def occlusion_penalty(p, c):
 
     return -1 * occlusion_delta
 
-def print_observation(ob, stdcsr=None):
+def print_observation(ob, stdcsr=None, verbose=False):
     if ob is None:
-        ob = np.zeros(shape=(3, 21, 10), dtype=np.int)
+        ob = np.zeros(shape=(3, 22, 10), dtype=np.int)
+    ob = ob[:, 2:, :]
     n, m = ob[0].shape
     if stdcsr:
         stdcsr.clear()
@@ -299,35 +300,36 @@ def print_observation(ob, stdcsr=None):
             stdcsr.addstr('\n')
         else:
             print()
-    score_functions = {
-        'Board Height': board_height_score,
-        'Hidden Boxes': hidden_boxes_score,
-        'Hidding Boxes': hidding_boxes_score,
-        'Closed Boxes': closed_boxes_score,
-        'Closed Regiones': closed_regions_score,
-        'Shared Edges': shared_edges_score,
-        'Boxes in a Line': boxes_in_a_line_score,
-        'Board Box Height': board_box_height_score,
-        'Average Height': board_ave_height_score,
-        'Quadratic Uneveness': board_quadratic_uneveness_score
-    }
-    count_functions = {
-        'Height': board_height,
-        'Hidden Boxes': num_hidden_boxes,
-        'Hidding Boxes': num_hidding_boxes,
-        'Closed Boxes': num_closed_boxes,
-        'Closed Boxes': num_closed_regions,
-        'Shared edges': num_shared_edges,
-        'Average Height': board_ave_height,
-        'Quadratic Uneveness': board_quadratic_uneveness
-    }
-    summary_lines = []
-    summary_lines.append(f'{"Counter":>20}:')
-    summary_lines.extend([f'{name:>20}: {func(ob)}' for name, func in count_functions.items()])
-    summary_lines.append(f'{"Score":>20}:')
-    summary_lines.extend([f'{name:>20}: {func(ob):.1f}' for name, func in score_functions.items()])
-    summary_str = "\n".join(summary_lines)
-    if stdcsr:
-        stdcsr.addstr(summary_str + '\n')
-    else:
-        print(summary_str)
+    if verbose:
+        score_functions = {
+            'Board Height': board_height_score,
+            'Hidden Boxes': hidden_boxes_score,
+            'Hidding Boxes': hidding_boxes_score,
+            'Closed Boxes': closed_boxes_score,
+            'Closed Regiones': closed_regions_score,
+            'Shared Edges': shared_edges_score,
+            'Boxes in a Line': boxes_in_a_line_score,
+            'Board Box Height': board_box_height_score,
+            'Average Height': board_ave_height_score,
+            'Quadratic Uneveness': board_quadratic_uneveness_score
+        }
+        count_functions = {
+            'Height': board_height,
+            'Hidden Boxes': num_hidden_boxes,
+            'Hidding Boxes': num_hidding_boxes,
+            'Closed Boxes': num_closed_boxes,
+            'Closed Boxes': num_closed_regions,
+            'Shared edges': num_shared_edges,
+            'Average Height': board_ave_height,
+            'Quadratic Uneveness': board_quadratic_uneveness
+        }
+        summary_lines = []
+        summary_lines.append(f'{"Counter":>20}:')
+        summary_lines.extend([f'{name:>20}: {func(ob)}' for name, func in count_functions.items()])
+        summary_lines.append(f'{"Score":>20}:')
+        summary_lines.extend([f'{name:>20}: {func(ob):.1f}' for name, func in score_functions.items()])
+        summary_str = "\n".join(summary_lines)
+        if stdcsr:
+            stdcsr.addstr(summary_str + '\n')
+        else:
+            print(summary_str)
