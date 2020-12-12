@@ -12,11 +12,16 @@ from torch.distributions import Categorical
 from MaTris.gym_matris import MatrisEnv
 from networks.network_bodies import TetrisBodyV2
 from utils.hyperparameters import Config
+from utils.board_utils import print_observation
+import utils.board_utils as bu
+from curses import wrapper
 
 render = True
+test = False
 config = Config()
 device = config.device
-config.BATCH_SIZE = 20
+config.BATCH_SIZE = 10
+config.GAMMA = 0.99
 
 class PGbaseline(nn.Module):
     def __init__(self, input_shape, body=TetrisBodyV2, num_actions=2):
@@ -47,13 +52,13 @@ class PGbaseline(nn.Module):
         return action
 
 
-def finish_episode(optimizer):
+def finish_episode(policy, optimizer):
     R = 0
     policy_loss = []
     value_loss = []
     rewards = []
     for r in policy.rewards[::-1]:
-        R = r + args.gamma * R
+        R = r + config.GAMMA * R
         rewards.insert(0, R)
     # turn rewards to pytorch tensor and standardize
     rewards = torch.Tensor(rewards)
@@ -75,14 +80,34 @@ def finish_episode(optimizer):
     del policy.rewards[:]
     del policy.saved_log_probs[:]
 
+reward_functions = [
+    bu.penalize_hidden_boxes,
+    bu.penalize_hidding_boxes,
+    bu.penalize_closed_regions,
+    bu.penalize_higher_boxes,
+    bu.encourage_lower_layers,
+    bu.encourage_boxex_in_a_line,
+    bu.penalize_ave_height,
+    bu.penalize_quadratic_uneveness
+]
 
 
-if __name__ == "__main__":
-    env = MatrisEnv(no_display=False)
+def main(stdcsr=None):
+    def log(s, end="\n"):
+        if stdcsr:
+            stdcsr.addstr(s + end)
+        else:
+            print(s, end=end)
+    def refresh():
+        if stdcsr:
+            stdcsr.refresh()
+
+    env = MatrisEnv(no_display=True, reward_functions=reward_functions)
     state_shape = env.observation_space.shape
-    print(state_shape)
+    # print(state_shape)
+    max_lines = 0
     # built policy network
-    policy = PGbaseline([3,20,10]).to(device)
+    policy = PGbaseline([3,20,10], num_actions=env.action_space.n).to(device)
 
     # check & load pretrain model
     if os.path.isfile('pgb_params.pkl'):
@@ -105,26 +130,36 @@ if __name__ == "__main__":
             prev_x = cur_x
             x = torch.tensor([x], device=device, dtype=torch.float)
             action = policy.select_action(x)
-            state, reward, done, _ = env.step(action)
+            state, reward, done, info = env.step(action)
             reward_sum += reward
 
             policy.rewards.append(reward)
+
+            max_lines = max(max_lines, info['lines'])
+            print_observation(state, stdcsr)
+            log(f"Ep: {i_episode} | Reward_sum: {reward_sum} | Lines: {info['lines']} | Max_Cleared_line: {max_lines}")
+            refresh()
+
             if done:
                 # tracking log
                 running_reward = reward_sum if running_reward is None else running_reward * 0.99 + reward_sum * 0.01
-                print('Policy Gradient with Baseline ep %03d done. reward: %f. reward running mean: %f' % (i_episode, reward_sum, running_reward))
+                log('Policy Gradient with Baseline ep %03d done. reward: %f. reward running mean: %f' % (i_episode, reward_sum, running_reward))
                 reward_sum = 0
                 break
 
 
         # use policy gradient update model weights
-        if i_episode % args.batch_size == 0 and test == False:
-            finish_episode()
+        if i_episode % config.BATCH_SIZE == 0 and test == False:
+            finish_episode(policy, optimizer)
 
         # Save model in every 50 episode
         if i_episode % 50 == 0 and test == False:
             print('ep %d: model saving...' % (i_episode))
             torch.save(policy.state_dict(), 'pgb_params.pkl')
 
-
-
+if __name__ == '__main__':
+    use_text_gui = True
+    if use_text_gui:
+        wrapper(main)
+    else:
+        main()
