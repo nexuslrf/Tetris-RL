@@ -42,8 +42,9 @@ class MatrisEnv(gym.Env):
         state = self.game.matris.get_state()
         info = self.game.matris.get_info()
 
-        for reward_function in self.reward_functions:
-            reward += reward_function(previous_state, state)
+        if self.reward_functions:
+            for reward_function in self.reward_functions:
+                reward += reward_function(previous_state, state)
 
         reward /= 10
 
