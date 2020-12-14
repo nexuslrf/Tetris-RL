@@ -6,6 +6,9 @@ class Config(object):
     def __init__(self):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+        self.reward_type = 'score/100'
+        self.reward_functions = []
+
         #PPO controls
         self.ppo_epoch = 3
         self.num_mini_batch = 32
