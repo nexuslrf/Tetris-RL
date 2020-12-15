@@ -8,7 +8,11 @@ import torch
 from torch import optim
 from torch.utils.tensorboard import SummaryWriter
 import numpy as np
-from curses import wrapper
+try:
+    from curses import wrapper
+except:
+    print("your env does not support curses package")
+
 import random
 from torch import nn
 from utils.hyperparameters import Config
@@ -18,6 +22,7 @@ from MaTris.gym_matris_v2 import MatrisEnv
 from MaTris.gym_matris_v2 import ACTIONS
 from utils.board_utils import penalize_closed_boxes, penalize_hidden_boxes, penalize_hidding_boxes, penalize_higher_boxes, encourage_lower_layers, encourage_shared_edges, encourage_boxex_in_a_line
 from utils.board_utils import penalize_ave_height, penalize_quadratic_uneveness
+from multiprocessing import Pool, cpu_count
 
 writer = SummaryWriter()
 
@@ -204,7 +209,8 @@ def main(stdcsr=None):
     def refresh():
         if stdcsr:
             stdcsr.refresh()
-    env = MatrisEnv(no_display=True, real_tick=False, reward_functions=reward_functions)
+    mp_pool = Pool(cpu_count())
+    env = MatrisEnv(no_display=True, real_tick=False, reward_functions=reward_functions, mp_pool=mp_pool)
     config = Config()
     config.EXP_REPLAY_SIZE = 50000
     config.BATCH_SIZE = 128

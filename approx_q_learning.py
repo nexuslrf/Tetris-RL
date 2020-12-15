@@ -39,7 +39,7 @@ def max_q_action(env, w):
     policy_act = 0
     max_val = -np.inf
     for i in range(env.action_space.n):
-        tmp_state, _, _, _ = env.peak_step_srdi(i)
+        tmp_state, _, _, _ = env.peak_step(i)
         tmp_simple_state = get_simple_state(tmp_state)
         val = (tmp_simple_state * w).sum()
         if val > max_val:
@@ -76,7 +76,7 @@ for f in range(10000):
     rand_sel = np.random.rand() < epsilon
     if rand_sel:
         policy_act = env.action_space.sample()
-        next_state, _, _, _ = env.peak_step_srdi(policy_act)
+        next_state, _, _, _ = env.peak_step(policy_act)
         next_simple_state = get_simple_state(next_state)
     else:
         policy_act, next_simple_state = max_q_action(env, weight)

@@ -26,44 +26,43 @@ rotation: [0,1,2,3] | position: [-3,-2,-1,0,+1,+2,+3]
 """
 ROTATION = [0,1,2,3] # clock-wise
 POSITION = [-4,-3,-2,-1,0,+1,+2,+3,+4,+5]
-POST_MOV = [-1,0,1]
-ACTIONS = [combo for combo in itertools.product(ROTATION, POSITION, POST_MOV)]
+# POST_MOV = [-1,0,1]
+ACTIONS = [combo for combo in itertools.product(ROTATION, POSITION)]
 def generate_action_seq(act):
-    rot, pos, p_pos = act
+    rot, pos = act
     act_list = ["forward"] * rot if rot < 3 else ["reverse"]
     act_list = act_list + ['left'] * -pos if pos < 0 else act_list + ['right'] * pos
-    act_list.append('bottom drop')
-    act_list = act_list + ['left'] * -p_pos if p_pos < 0 else act_list + ['right'] * p_pos
+    # act_list.append('bottom drop')
+    # act_list = act_list + ['left'] * -p_pos if p_pos < 0 else act_list + ['right'] * p_pos
     act_list.append('hard drop')
     return act_list
-
-def step_func_wrapper(args):
-    matris, action_id, reward_functions = args
-    return step_func(matris, action_id, 20, reward_functions)
-
-def step_func(matris: MatrisCore, action_id, timepassed, reward_functions=None):
-    previous_state = matris.get_state()
-    act = generate_action_seq(ACTIONS[action_id])
-    reward = matris.step_update(act, timepassed/1000, set_next=True)
-    done = matris.done
-    state = matris.get_state()
-    info = matris.get_info()
-
-    previous_state[1:] = 0
-    state[1:] = 0
-    if reward_functions:
-        for reward_function in reward_functions:
-            reward += reward_function(previous_state, state)
-
-    reward /= 10
-    return state, reward, done, info
 
 class MatrisEnv(gym.Env):
     metadata = {'render.modes': ['human']}
     action_list = ACTIONS
-    pools = Pool(cpu_count())
+    # pools = Pool(cpu_count())
+    def step_func_wrapper(args):
+        matris, action_id, reward_functions = args
+        return MatrisEnv.step_func(matris, action_id, 20, reward_functions)
 
-    def __init__(self, no_display=True, real_tick=False, reward_functions=None, mp_pool=0):
+    def step_func(matris: MatrisCore, action_id, timepassed, reward_functions=None):
+        previous_state = matris.get_state()
+        act = generate_action_seq(ACTIONS[action_id])
+        reward = matris.step_update(act, timepassed/1000, set_next=True)
+        done = matris.done
+        state = matris.get_state()
+        info = matris.get_info()
+
+        previous_state[1:] = 0
+        state[1:] = 0
+        if reward_functions:
+            for reward_function in reward_functions:
+                reward += reward_function(previous_state, state)
+
+        reward /= 10
+        return state, reward, done, info
+
+    def __init__(self, no_display=True, real_tick=False, reward_functions=None, mp_pool=None):
         if not no_display:
             pygame.init()
             pygame.display.set_caption("MaTris")
@@ -83,52 +82,33 @@ class MatrisEnv(gym.Env):
     def step(self, action_id):
         self.game.matris.drop_bonus = False
         timepassed = self.game.clock.tick(50) if self.real_tick else 20
-        return step_func(self.game.matris, action_id, timepassed, self.reward_functions)
+        return MatrisEnv.step_func(self.game.matris, action_id, timepassed, self.reward_functions)
 
-    def peak_step_srdi(self, action_id):
+    def peak_step(self, action_id):
         timepassed = self.game.clock.tick(50) if self.real_tick else 20
         self.game.matris.push_state()
-        ret = step_func(self.game.matris, action_id, timepassed, self.reward_functions)
+        ret = MatrisEnv.step_func(self.game.matris, action_id, timepassed, self.reward_functions)
         self.game.matris.pop_state()
         return ret
     
     def peak_actions(self, action_id_list=None):
         if action_id_list is None:
             action_id_list = list(range(self.action_space.n))
-        self.game.matris.push_state()
-        ret = MatrisEnv.pools.map(step_func_wrapper, [(copy.deepcopy(self.game.matris), action_id, self.reward_functions) for action_id in action_id_list])
-        self.game.matris.pop_state()
-        return ret
-
-    def peek(args):
-        mat, action_id, reward_functions = args
-        reward_functions = None
-        act = generate_action_seq(MatrisEnv.action_list[action_id])
-        reward = mat.step_update(act, 0.02, set_next=False)
-        done = mat.done
-        state = mat.get_state()
-        info = mat.get_info()
-        state[1:] = 0
-        if reward_functions:
-            for reward_function in reward_functions:
-                reward += reward_function(previous_state, state)
-
-        reward /= 10
-        return state, reward, done, info
-        # return action_id 
-
-    def mp_peek_step(self):
-        assert self.mp_pool is not None
-        previous_state = self.game.matris.get_state()
-        previous_state[1:] = 0
-        self.game.matris.push_state()
         
-        ret_lst = self.mp_pool.map(MatrisEnv.peek, 
-            [(copy.copy(self.game.matris), i, self.reward_functions) for i in range(self.action_space.n)])
-
-        self.game.matris.pop_state()
-
-        return ret_lst
+        if self.mp_pool is not None:
+            self.game.matris.push_state()
+            ret = self.mp_pool.map(MatrisEnv.step_func_wrapper, \
+                [(copy.deepcopy(self.game.matris), action_id, self.reward_functions) \
+                    for action_id in action_id_list])
+            self.game.matris.pop_state()
+        else:
+            ret = []
+            for action_id in action_id_list:
+                self.game.matris.push_state()
+                tmp = MatrisEnv.step_func(self.game.matris, action_id, 20, self.reward_functions)
+                ret.append(tmp)
+                self.game.matris.pop_state()
+        return ret
         
     def reset(self):
         self.game.gym_init(self.screen)

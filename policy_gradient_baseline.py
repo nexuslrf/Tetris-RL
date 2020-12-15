@@ -14,7 +14,10 @@ from networks.network_bodies import TetrisBodyV2
 from utils.hyperparameters import Config
 from utils.board_utils import print_observation
 import utils.board_utils as bu
-from curses import wrapper
+try:
+    from curses import wrapper
+except:
+    print("your env does not support curses package")
 
 render = True
 test = False
@@ -51,6 +54,38 @@ class PGbaseline(nn.Module):
         self.saved_log_probs.append((m.log_prob(action), state_value))
         return action
 
+class PGbaselineV2(nn.Module):
+    def __init__(self, input_shape, body=TetrisBodyV2, num_actions=2):
+        super(PGbaselineV2, self).__init__()
+        self.net_body = body(input_shape)
+        
+        in_features = self.net_body.feature_size()
+        self.rot_head = nn.Linear(in_features, 4) # action 1: static, action 2: move up, action 3: move down
+        self.pos_head = nn.Linear(in_features, 10) 
+        self.value_head = nn.Linear(in_features, 1)
+
+        self.num_actions = num_actions
+        self.saved_log_probs = []
+        self.rewards = []
+
+    def forward(self, x):
+        x = F.relu(self.net_body(x))
+        rot_scores = self.rot_head(x)
+        pos_scores = self.pos_head(x)
+        state_values = self.value_head(x)
+        return F.softmax(rot_scores, dim=-1), F.softmax(pos_scores, dim=-1), state_values
+
+
+    def select_action(self, x):
+        rot_probs, pos_probs, state_value = self.forward(x)
+        rot_m = Categorical(rot_probs)
+        rot = rot_m.sample()
+        pos_m = Categorical(pos_probs)
+        pos = pos_m.sample()
+        action = rot * 10 + pos
+
+        self.saved_log_probs.append((rot_m.log_prob(rot) + pos_m.log_prob(pos), state_value))
+        return action
 
 def finish_episode(policy, optimizer):
     R = 0
@@ -81,14 +116,7 @@ def finish_episode(policy, optimizer):
     del policy.saved_log_probs[:]
 
 reward_functions = [
-    bu.penalize_hidden_boxes,
-    bu.penalize_hidding_boxes,
-    bu.penalize_closed_regions,
-    bu.penalize_higher_boxes,
-    bu.encourage_lower_layers,
-    bu.encourage_boxex_in_a_line,
-    bu.penalize_ave_height,
-    bu.penalize_quadratic_uneveness
+    # bu.occlusion_penalty
 ]
 
 
@@ -107,7 +135,7 @@ def main(stdcsr=None):
     # print(state_shape)
     max_lines = 0
     # built policy network
-    policy = PGbaseline([3,20,10], num_actions=env.action_space.n).to(device)
+    policy = PGbaseline(state_shape, num_actions=env.action_space.n).to(device)
 
     # check & load pretrain model
     if os.path.isfile('pgb_params.pkl'):
@@ -137,7 +165,8 @@ def main(stdcsr=None):
 
             max_lines = max(max_lines, info['lines'])
             print_observation(state, stdcsr)
-            log(f"Ep: {i_episode} | Reward_sum: {reward_sum} | Lines: {info['lines']} | Max_Cleared_line: {max_lines}")
+            log(f"Ep: {i_episode} | Reward: {reward:<5.1f} |  Reward_sum: {reward_sum::<5.1f}")
+            log(f"Lines: {info['lines']:4d} | Max_Cleared_line: {max_lines:4d}")
             refresh()
 
             if done:

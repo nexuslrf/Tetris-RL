@@ -46,7 +46,7 @@ VISIBLE_MATRIX_HEIGHT = MATRIX_HEIGHT - 2
 
 DROP_TRIALS = 4
 
-MAX_LEVEL = 20
+MAX_LEVEL = 1
 
 DROP_RATIO = 1 - 0.2
 
@@ -363,6 +363,7 @@ class MatrisCore(object):
         items = (
             self.tetromino_rotation, 
             self.tetromino_position, 
+            self.current_tetromino,
             self.next_tetromino,
             self.next_tetromino_bag.copy(),
             self.next_tetromino_idx,
@@ -386,7 +387,8 @@ class MatrisCore(object):
         items = self.state_stack.pop()
         (
             self.tetromino_rotation, 
-            self.tetromino_position, 
+            self.tetromino_position,
+            self.current_tetromino,
             self.next_tetromino,
             self.next_tetromino_bag,
             self.next_tetromino_idx,
