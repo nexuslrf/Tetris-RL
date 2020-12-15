@@ -1,4 +1,7 @@
 import os
+import datetime
+import cProfile 
+import pprint
 import time
 import json
 from functools import partial
@@ -188,10 +191,10 @@ class Agent(object):
 
 # reward_functions = []
 reward_functions = [
-    # penalize_closed_boxes,
+    penalize_closed_boxes,
     penalize_hidden_boxes,
     penalize_hidding_boxes,
-    penalize_closed_regions,
+    # penalize_closed_regions,
     # encourage_shared_edges,
     penalize_higher_boxes,
     encourage_lower_layers,
@@ -209,20 +212,27 @@ def main(stdcsr=None):
     def refresh():
         if stdcsr:
             stdcsr.refresh()
+            
     mp_pool = Pool(cpu_count())
     env = MatrisEnv(no_display=True, real_tick=False, reward_functions=reward_functions, mp_pool=mp_pool)
+    save_dir = os.path.join("./saved_agents", datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S"))
     config = Config()
-    config.EXP_REPLAY_SIZE = 50000
-    config.BATCH_SIZE = 128
+    config.reward_type = "live/1"  # can be ['']
+    config.EXP_REPLAY_SIZE = 5000
+    config.BATCH_SIZE = 256
     config.LEARN_START = config.BATCH_SIZE
     config.TRAIN_FREQ = 1
     config.TARGET_NET_UPDATE_FREQ = 100
+    config.GAMMA = 0.99
     config.SAVE_FREQ = 100
-    config.LR = 2e-3
+    config.LR = 1e-3
     config.epsilon_start = 0.0
     config.epsilon_final = 0.0
+    config.reward_functions = reward_functions
     body_list = [TetrisBodyV2]
+    env = MatrisEnv(no_display=True, real_tick=False, reward_functions=reward_functions, reward_type=config.reward_type)
     agent = Agent(env=env, config=config, body=body_list[0], use_target=False)
+    writer.add_text('cfg', pprint.pformat(config.__dict__))
 
     episode_reward = 0
     rounds = 0
@@ -249,16 +259,14 @@ def main(stdcsr=None):
         rounds += 1
         lines = info['lines']
         score = info['score']
-        if done:
-            print("done")
 
-        print_observation(observation, stdcsr)
+        print_observation(observation, env.get_color_state(), stdcsr)
         current_value = agent.observation_value(prev_observation)
         next_value = agent.observation_value(observation)
-        log("[{:5}/{} {:.0f} secs] State value: {:<5.1f}  Target value: {:<5.1f} ({:=5.1f} + {:=5.1f})  Action: {:<2}".format(
-            frame_idx, config.MAX_FRAMES, time.time() - start_time, current_value, next_value+reward, reward, next_value, action))
-        log("Game: {}  Round: {}  Episode reward: {:<5.1f}  Cleared lines: {:<4}  Loss: {:<.1f}  Epsilon: {:<.3f}".format(
-            len(agent.lines), rounds, episode_reward, lines, agent.losses[-1][1] if len(agent.losses) > 0 else 0.0, epsilon))
+        log("[ {} / {} {:.0f} secs] State value: {:<5.1f}  Target value: {:<5.1f} ({:=5.1f} + {} * {:=5.1f})  Action: {:<2}".format(
+            frame_idx, config.MAX_FRAMES, time.time() - start_time, current_value, config.GAMMA * next_value + reward, reward, config.GAMMA, next_value, action))
+        log("Game: {}  Cleared lines and Round: {} / {}  Episode reward: {:<5.1f}  Loss: {:<.1f}  Epsilon: {:<.3f}".format(
+            len(agent.lines), lines, rounds, episode_reward, agent.losses[-1][1] if len(agent.losses) > 0 else 0.0, epsilon))
         refresh()
 
         writer.add_scalars('state_values', {
@@ -266,6 +274,7 @@ def main(stdcsr=None):
             'next_state_value': next_value,
             'reward': reward,
         }, frame_idx)
+        writer.add_scalar('epsilon', epsilon, frame_idx)
 
         if done:
             observation = env.reset()
@@ -281,9 +290,10 @@ def main(stdcsr=None):
             episode_reward = 0
             rounds = 0
             lines = 0
+            agent.save(os.path.join(save_dir, f"agent_{game}"))
         
-        if frame_idx % config.SAVE_FREQ == 0:
-            agent.save(f'./saved_agents/agent_{frame_idx}')
+        # if frame_idx % config.SAVE_FREQ == 0:
+        #     agent.save(f'./saved_agents/agent_{frame_idx}')
             
     agent.save('./saved_agents/final')
     env.close()
@@ -294,5 +304,6 @@ if __name__ == '__main__':
     if use_text_gui:
         wrapper(main)
     else:
+        # cProfile.run('main()')
         main()
 

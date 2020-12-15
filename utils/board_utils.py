@@ -242,19 +242,27 @@ def occlusion_penalty(p, c):
 
     return -1 * occlusion_delta
 
-def print_observation(ob, stdcsr=None, verbose=False):
+def print_observation(ob, color_ob, stdcsr=None, verbose=False):
     if ob is None:
         ob = np.zeros(shape=(3, 22, 10), dtype=np.int)
     ob = ob[:, 2:, :]
+    ob[1:] = 0
+    color_ob = color_ob[:, 2:, :]
     n, m = ob[0].shape
     if stdcsr:
         stdcsr.clear()
-        curses.init_pair(1, curses.COLOR_WHITE, curses.COLOR_BLACK)
+        # colors = ["none","blue","yellow","pink","green","red","cyan","orange","grey"]
+        curses.init_pair(1, curses.COLOR_BLUE, curses.COLOR_BLACK)
         curses.init_pair(2, curses.COLOR_YELLOW, curses.COLOR_BLACK)
         curses.init_pair(3, curses.COLOR_CYAN, curses.COLOR_BLACK)
+        curses.init_pair(4, curses.COLOR_GREEN, curses.COLOR_BLACK)
+        curses.init_pair(5, curses.COLOR_RED, curses.COLOR_BLACK)
+        curses.init_pair(6, curses.COLOR_CYAN, curses.COLOR_BLACK)
+        curses.init_pair(7, curses.COLOR_MAGENTA, curses.COLOR_BLACK)
+        curses.init_pair(8, curses.COLOR_WHITE, curses.COLOR_BLACK)
     for i in range(n+2):
         for j in range(m+2):
-            clr = 1
+            clr = 0
             if (i == 0 or i == n+1) and (j == 0 or j == m+1):
                 pch = '+'
                 if stdcsr:
@@ -279,16 +287,17 @@ def print_observation(ob, stdcsr=None, verbose=False):
                     pch = '.'
                     if stdcsr:
                         ch = curses.ACS_BLOCK
+                        clr = color_ob[0, i-1, j-1]
                 elif ob[1, i-1, j-1] != 0:
                     pch = '~'
                     if stdcsr:
                         ch = curses.ACS_BLOCK
-                        clr = 2
+                        # clr = 2
                 elif ob[2, i-1, j-1] != 0:
                     pch = 'x'
                     if stdcsr:
                         ch = curses.ACS_BLOCK
-                        clr = 3
+                        # clr = 3
                 else:
                     pch = ' '
                     ch = ' '

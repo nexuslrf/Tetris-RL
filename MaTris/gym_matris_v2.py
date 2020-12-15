@@ -42,27 +42,37 @@ class MatrisEnv(gym.Env):
     action_list = ACTIONS
     # pools = Pool(cpu_count())
     def step_func_wrapper(args):
-        matris, action_id, reward_functions = args
-        return MatrisEnv.step_func(matris, action_id, 20, reward_functions)
+        matris, action_id, reward_functions, reward_type = args
+        return step_func(matris, action_id, 20, reward_functions)
 
-    def step_func(matris: MatrisCore, action_id, timepassed, reward_functions=None):
+    def step_func(matris: MatrisCore, action_id, timepassed, reward_functions=None, reward_type='score/10'):
         previous_state = matris.get_state()
+        previous_info = matris.get_info()
         act = generate_action_seq(ACTIONS[action_id])
-        reward = matris.step_update(act, timepassed/1000, set_next=True)
+        matris.step_update(act, timepassed/1000, set_next=True)
         done = matris.done
         state = matris.get_state()
         info = matris.get_info()
 
-        previous_state[1:] = 0
-        state[1:] = 0
-        if reward_functions:
-            for reward_function in reward_functions:
-                reward += reward_function(previous_state, state)
+        if reward_type.startswith('score'):
+            divide = float(reward_type.split('/')[1]) if '/' in reward_type else 1
+            reward = info['score'] - previous_info['score']
+            previous_state[1:] = 0
+            state[1:] = 0
+            if reward_functions:
+                for reward_function in reward_functions:
+                    reward += reward_function(previous_state, state)
+            reward /= divide
+        elif reward_type.startswith('live'):
+            base_reward = float(reward_type.split('/')[1]) if '/' in reward_type else 1
+            reward = base_reward if not done else 0
+        else:
+            raise ValueError
 
-        reward /= 10
         return state, reward, done, info
+    
 
-    def __init__(self, no_display=True, real_tick=False, reward_functions=None, mp_pool=None):
+    def __init__(self, no_display=True, real_tick=False, reward_functions=None, mp_pool=None, reward_type='score/10'):
         if not no_display:
             pygame.init()
             pygame.display.set_caption("MaTris")
@@ -74,6 +84,7 @@ class MatrisEnv(gym.Env):
         self.game.gym_init(self.screen)
         self.reward_functions = reward_functions
 
+        self.reward_type = reward_type
         self.real_tick = real_tick
         self.action_space = spaces.Discrete(len(ACTIONS))
         self.observation_space = spaces.Box(low=0, high=1, shape=(3,22,10), dtype=np.int)
@@ -82,30 +93,33 @@ class MatrisEnv(gym.Env):
     def step(self, action_id):
         self.game.matris.drop_bonus = False
         timepassed = self.game.clock.tick(50) if self.real_tick else 20
-        return MatrisEnv.step_func(self.game.matris, action_id, timepassed, self.reward_functions)
+        return MatrisEnv.step_func(self.game.matris, action_id, timepassed, self.reward_functions, self.reward_type)
+    
+    def get_color_state(self):
+        return self.game.matris.matrix.copy()
 
     def peak_step(self, action_id):
         timepassed = self.game.clock.tick(50) if self.real_tick else 20
         self.game.matris.push_state()
-        ret = MatrisEnv.step_func(self.game.matris, action_id, timepassed, self.reward_functions)
+        ret = MatrisEnv.step_func(self.game.matris, action_id, timepassed, self.reward_functions, self.reward_type)
         self.game.matris.pop_state()
         return ret
     
     def peak_actions(self, action_id_list=None):
         if action_id_list is None:
             action_id_list = list(range(self.action_space.n))
-        
+                 
         if self.mp_pool is not None:
             self.game.matris.push_state()
             ret = self.mp_pool.map(MatrisEnv.step_func_wrapper, \
-                [(copy.deepcopy(self.game.matris), action_id, self.reward_functions) \
+                [(copy.deepcopy(self.game.matris), action_id, self.reward_functions, self.reward_type) \
                     for action_id in action_id_list])
             self.game.matris.pop_state()
         else:
             ret = []
             for action_id in action_id_list:
                 self.game.matris.push_state()
-                tmp = MatrisEnv.step_func(self.game.matris, action_id, 20, self.reward_functions)
+                tmp = MatrisEnv.step_func(self.game.matris, action_id, 20, self.reward_functions, self.reward_type)
                 ret.append(tmp)
                 self.game.matris.pop_state()
         return ret
