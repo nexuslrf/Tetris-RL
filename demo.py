@@ -38,7 +38,7 @@ def main(stdcsr=None):
     body_list = [TetrisBodyV2]
     agent = Agent(env=env, config=config, body=body_list[0], use_target=False, static_policy=True, use_data_parallel=False)
     # load model 
-    ckpt = torch.load(model_path)
+    ckpt = torch.load(model_path, map_location=lambda storage, loc: storage)
     # agent.model.load_state_dict(ckpt)
     agent.model.load_state_dict({k.replace('module.',''):v for k,v in ckpt.items()}) 
 

@@ -27,8 +27,6 @@ from utils.board_utils import penalize_closed_boxes, penalize_hidden_boxes, pena
 from utils.board_utils import penalize_ave_height, penalize_quadratic_uneveness
 from multiprocessing import Pool, cpu_count
 
-writer = SummaryWriter()
-
 class ExperienceReplayMemory:
     def __init__(self, capacity):
         self.capacity = capacity
@@ -152,7 +150,7 @@ class Agent(object):
         #     param.grad.data.clamp_(-1, 1)
         self.optimizer.step()
         self.append_loss(step, loss.item())
-        writer.add_scalar('loss', loss.item(), step)
+        
     
     def update_target_network(self):
         if self.use_target:
@@ -212,7 +210,8 @@ def main(stdcsr=None):
     def refresh():
         if stdcsr:
             stdcsr.refresh()
-            
+
+    writer = SummaryWriter()
     mp_pool = Pool(cpu_count())
     env = MatrisEnv(no_display=True, real_tick=False, reward_functions=reward_functions, mp_pool=mp_pool)
     save_dir = os.path.join("./saved_agents", datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S"))
@@ -251,6 +250,7 @@ def main(stdcsr=None):
         agent.append_to_replay(prev_observation, action, reward, observation)
         if frame_idx >= config.LEARN_START and frame_idx % config.TRAIN_FREQ == 0:
             agent.update(frame_idx)
+            writer.add_scalar('loss', agent.losses[-1][1], agent.losses[-1][0])
 
         if frame_idx >= config.LEARN_START and frame_idx % config.TARGET_NET_UPDATE_FREQ == 0:
             agent.update_target_network()
